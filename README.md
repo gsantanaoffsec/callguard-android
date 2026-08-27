@@ -118,6 +118,7 @@ Cinco camadas, sem cerimônia inútil:
 | `AllowlistRepository` | Lista de exceções + cache em memória. |
 | `TelephonyPhoneNumberNormalizer` | E.164 via `PhoneNumberUtils` + regra do 9º dígito. |
 | `ContactLookup` | `PhoneLookup`, só quando muda a decisão. |
+| `BlockedCallNotifier` | Aviso silencioso de bloqueio (canal `IMPORTANCE_LOW`, `setSilent`). |
 | `CallGuardViewModel` | Estado da UI; reconsulta papel/permissão a cada `ON_RESUME`. |
 
 ---
@@ -153,18 +154,25 @@ policy.evaluate(call, previousAttempts)
    │   anteriores na janela < max  → Allow(UNDER_LIMIT)
    │   anteriores na janela >= max → Block(CALL_LIMIT_EXCEEDED)
    ▼
-Block? grava blocked_calls + incrementa contador
-   ▼
 respondToCall(details, CallResponse)
    │   ALLOW: Builder().build()
    │   BLOCK: setDisallowCall(true).setRejectCall(true).setSkipNotification(true)
    ▼
 Telecom desliga a chamada. O telefone nunca toca.
+   │
+   ▼
+efeitos colaterais, JÁ FORA do orçamento de 5 s:
+   grava blocked_calls · incrementa contador · notifica em silêncio
 ```
 
 **Orçamento de tempo:** o framework dá 5 s. O app usa `withTimeoutOrNull(3000)` e,
 se estourar, responde `ALLOW`. **A falha é sempre para o lado de permitir** — jamais
 derrubar uma ligação legítima por lentidão nossa.
+
+A resposta ao Telecom sai **antes** de gravar o bloqueio e notificar. O relógio de 5 s
+para no `respondToCall`; efeitos colaterais não devem disputar esse orçamento nem
+atrasar a decisão que o sistema está esperando. Se um deles falhar, a chamada já foi
+recusada do mesmo jeito.
 
 ---
 
@@ -212,6 +220,7 @@ callguard-android/
         │   │   │   └── ContactLookup.kt
         │   │   ├── screening/
         │   │   │   ├── InsistentCallScreeningService.kt
+        │   │   │   ├── BlockedCallNotifier.kt
         │   │   │   └── CallScreeningRoleController.kt
         │   │   └── ui/
         │   │       ├── MainActivity.kt
@@ -221,11 +230,14 @@ callguard-android/
         │   │       ├── BlockedCallsScreen.kt
         │   │       └── theme/Theme.kt
         │   └── res/
-        └── test/kotlin/br/dev/callguard/core/
-            ├── InsistentCallPolicyTest.kt          ← os 10 casos
-            ├── BrazilPhoneRulesTest.kt
-            ├── PhoneNumberMaskerTest.kt
-            └── ProtectionSettingsTest.kt
+        └── test/kotlin/br/dev/callguard/
+            ├── core/
+            │   ├── InsistentCallPolicyTest.kt      ← os 10 casos
+            │   ├── BrazilPhoneRulesTest.kt
+            │   ├── PhoneNumberMaskerTest.kt
+            │   └── ProtectionSettingsTest.kt
+            └── data/db/
+                └── CallAttemptDaoTest.kt           ← prova da atomicidade
 ```
 
 ---
@@ -249,6 +261,9 @@ Cada uma está no projeto porque é usada. Não há nada "por via das dúvidas".
 | `androidx.room:room-compiler` (KSP) | Geração de código do Room. |
 | `androidx.datastore:datastore-preferences` | Preferências do usuário. |
 | `junit` (test) | Testes da regra. |
+| `robolectric` (test) | Roda Room sobre SQLite real na JVM, o que permite testar a transação do DAO sem emulador. |
+| `androidx.test:core` (test) | Fornece o `Context` que o Room exige nesses testes. |
+| `kotlinx-coroutines-test` (test) | Dispara as corrotinas concorrentes do teste de race condition. |
 
 **Não há**: Hilt/Dagger (3 repositórios não justificam), Retrofit/OkHttp (não há rede),
 navigation-compose (duas telas), WorkManager (nada agendado), Firebase, analytics.
@@ -304,6 +319,13 @@ então a segunda chamada obrigatoriamente enxerga a tentativa registrada pela pr
 Não há necessidade de mutex adicional em nível de aplicação — e um mutex sozinho não
 resolveria, já que não protegeria contra escritas de outro processo.
 
+**Isto é verificado, não apenas afirmado.** `CallAttemptDaoTest` dispara 20 chamadas
+simultâneas do mesmo número contra um Room em memória (SQLite de verdade, via
+Robolectric) e exige que as contagens anteriores formem exatamente `0, 1, 2, … 19` sem
+repetição. Qualquer valor repetido seria a race condition acontecendo — duas chamadas
+lendo o mesmo contador e ambas passando. Um segundo teste faz o mesmo intercalando dois
+números diferentes e confirma que os históricos não se contaminam.
+
 **Caches em memória** (`SettingsRepository`, `AllowlistRepository`): são `@Volatile` e
 existem apenas para velocidade. Toda leitura tem fallback para a fonte real quando o
 cache está frio, e toda escrita atualiza o cache. Nenhuma decisão depende do cache estar
@@ -317,8 +339,11 @@ reconstruída da tabela na próxima chamada. Nada é mantido apenas em memória.
 
 ## 8. Privacidade e permissões
 
-**Uma única permissão declarada: `READ_CONTACTS`** — e ela só é *solicitada* quando o
-usuário liga "aplicar a regra também aos contatos salvos".
+**Duas permissões declaradas, ambas solicitadas só quando fazem falta:**
+
+- **`READ_CONTACTS`** — pedida apenas ao ligar "aplicar a regra também aos contatos salvos".
+- **`POST_NOTIFICATIONS`** — pedida apenas ao ligar "avisar quando bloquear". Sem ela o
+  app simplesmente não notifica; nada mais muda.
 
 Isto é possível por causa de um detalhe do Telecom
 (`CallScreeningServiceFilter.startFilterLookup`):
@@ -344,7 +369,7 @@ explicitamente. É o único caso em que consultamos a agenda.
 
 **Permissões deliberadamente NÃO pedidas:** `READ_CALL_LOG` (a API de screening já
 entrega o necessário), `READ_PHONE_STATE`, `ANSWER_PHONE_CALLS`, `CALL_PHONE`,
-`INTERNET`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE`.
+`INTERNET`, `RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE`.
 O app não é discador padrão e não precisa ser.
 
 **Sobre a segunda permissão no APK:** ao inspecionar o APK aparece também
@@ -412,7 +437,25 @@ que se desfaz sozinha quando a janela esvazia.
 
 ---
 
-## 11. Instalação
+## 11. Avisos e correção rápida
+
+**Aviso silencioso de bloqueio.** O app usa um canal `IMPORTANCE_LOW` com
+`setSilent(true)`: a notificação aparece na barra, sem som e sem vibração, com o número
+mascarado e a quantidade de tentativas. Sempre no mesmo id — ela é substituída em vez de
+empilhar uma por chamada bloqueada. Tocar nela abre direto a tela de bloqueios.
+
+Sem isso o app agia em silêncio absoluto e o usuário só descobria um bloqueio abrindo a
+tela de histórico — o que esconde dele uma informação que é sua, especialmente com a
+regra valendo também para contatos salvos.
+
+**"Nunca bloquear este número".** Cada item da tela de bloqueios tem esse botão. O número
+ali já está normalizado — foi essa a chave usada para bloquear —, então ele entra na
+allowlist como está, sem passar pelo normalizador de novo: reprocessar poderia gerar uma
+chave diferente e a exceção não pegaria. Itens já liberados aparecem marcados.
+
+---
+
+## 12. Instalação
 
 ### Abrir no Android Studio
 
@@ -475,7 +518,7 @@ proteção contra spam → CallGuard**.
 
 ---
 
-## 12. Teste real com outro telefone
+## 13. Teste real com outro telefone
 
 Configure primeiro, para não esperar muito:
 
@@ -520,7 +563,7 @@ I CallGuardScreening: Screening decidiu: BLOCK(CALL_LIMIT_EXCEEDED, tentativas=2
 
 ---
 
-## 13. Troubleshooting Samsung
+## 14. Troubleshooting Samsung
 
 ### O serviço não recebe chamada nenhuma
 
@@ -588,27 +631,33 @@ de bateria (acima) reduz bastante o efeito.
 
 ---
 
-## 14. Estado verificado da build
+## 15. Estado verificado da build
 
 Compilado e testado nesta máquina antes da entrega:
 
 ```
-> Task :app:compileDebugKotlin        (sem erros, sem warnings)
+> Task :app:compileDebugKotlin        (sem erros)
 > Task :app:kspDebugKotlin            (Room gerou os DAOs)
-> Task :app:testDebugUnitTest         33 testes, 0 falhas
-> Task :app:assembleDebug
+> Task :app:testDebugUnitTest         39 testes, 0 falhas
+> Task :app:assembleRelease           (R8 + shrinkResources)
 BUILD SUCCESSFUL
 ```
 
 | Suíte | Testes | Falhas |
 |---|---|---|
 | `InsistentCallPolicyTest` | 22 | 0 |
+| `CallAttemptDaoTest` | 6 | 0 |
 | `BrazilPhoneRulesTest` | 5 | 0 |
 | `PhoneNumberMaskerTest` | 3 | 0 |
 | `ProtectionSettingsTest` | 3 | 0 |
 
-APK debug: `app/build/outputs/apk/debug/app-debug.apk` (~32 MB — build de debug, sem
-minificação; a `release` com R8 fica muito menor).
+APK release: ~2,7 MB (com R8). O APK debug fica em ~31 MB por carregar ferramental de
+desenvolvimento — serve para depurar, não para distribuir.
+
+Após a minificação, foi conferido que as classes instanciadas pelo sistema **por nome**
+sobreviveram ao R8 (`InsistentCallScreeningService`, `CallGuardApplication`,
+`MainActivity`, `CallGuardDatabase_Impl`). É o risco real de um build minificado: o
+compilador não vê essas referências, elas vêm do manifesto.
 
 Permissões efetivamente presentes no APK (via `aapt2 dump permissions`):
 
@@ -634,6 +683,6 @@ tempo de execução no Samsung. Os passos 12 e 13 existem exatamente para isso.
 
 ---
 
-## 15. Licença e escopo
+## 16. Licença e escopo
 
 Uso pessoal. Todos os dados ficam no aparelho; nada é enviado para lugar nenhum.

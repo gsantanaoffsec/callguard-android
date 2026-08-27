@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">CallGuard</string>
+
+    <string name="notification_channel_blocked">Chamadas bloqueadas</string>
+    <string name="notification_channel_blocked_description">
+        Aviso silencioso quando uma chamada é recusada pela regra de repetição.
+    </string>
+    <string name="notification_blocked_title">Chamada bloqueada</string>
+    <!-- %1$s = telefone mascarado, %2$d = tentativas recentes -->
+    <string name="notification_blocked_text">%1$s · %2$d tentativas em pouco tempo</string>
 </resources>

@@ -17,10 +17,23 @@
       atributo android:permission do <service> abaixo.
 
       Nao precisamos de: READ_CALL_LOG (a API de screening ja entrega o que precisamos),
-      READ_PHONE_STATE, ANSWER_PHONE_CALLS, INTERNET, POST_NOTIFICATIONS,
-      RECEIVE_BOOT_COMPLETED nem FOREGROUND_SERVICE.
+      READ_PHONE_STATE, ANSWER_PHONE_CALLS, INTERNET, RECEIVE_BOOT_COMPLETED
+      nem FOREGROUND_SERVICE.
     -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!--
+      Usada apenas para o aviso silencioso de "chamada bloqueada".
+
+      Sem ela o app age em silencio absoluto e o usuario so descobre um bloqueio abrindo
+      a tela de historico — o que esconde dele uma informacao que e sua, especialmente
+      com a regra valendo tambem para contatos salvos.
+
+      A notificacao usa um canal IMPORTANCE_LOW e setSilent(true): aparece na barra, sem
+      som e sem vibracao. Se a permissao nao for concedida (Android 13+), o app apenas
+      deixa de notificar; nada mais e afetado.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- O app so faz sentido em aparelhos com telefonia. -->
     <uses-feature
@@ -42,6 +55,7 @@
             android:name=".ui.MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.CallGuard"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

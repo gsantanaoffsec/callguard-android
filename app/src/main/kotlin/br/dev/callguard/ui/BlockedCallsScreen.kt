@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -15,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,6 +25,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -48,8 +51,10 @@ private val DATE_TIME_FORMAT: DateTimeFormatter =
 @Composable
 fun BlockedCallsScreen(
     blockedCalls: List<BlockedCallEntity>,
+    allowlistedNumbers: Set<String>,
     onBack: () -> Unit,
     onClearHistory: () -> Unit,
+    onAllowlistNumber: (String) -> Unit,
 ) {
     BackHandler(onBack = onBack)
 
@@ -116,6 +121,7 @@ fun BlockedCallsScreen(
             }
 
             items(blockedCalls, key = { it.id }) { blocked ->
+                val jaLiberado = blocked.normalizedNumber in allowlistedNumbers
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
                         Text(
@@ -144,6 +150,36 @@ fun BlockedCallsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                         )
+
+                        Spacer(Modifier.height(8.dp))
+                        // Consertar um bloqueio errado no momento em que ele e visto: sem
+                        // isto o usuario teria que redigitar o numero na tela principal.
+                        if (jaLiberado) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Na lista de exceções — não será mais bloqueado",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        } else {
+                            TextButton(
+                                onClick = { onAllowlistNumber(blocked.normalizedNumber) },
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                    horizontal = 0.dp,
+                                    vertical = 0.dp,
+                                ),
+                            ) {
+                                Text("Nunca bloquear este número")
+                            }
+                        }
                     }
                 }
             }

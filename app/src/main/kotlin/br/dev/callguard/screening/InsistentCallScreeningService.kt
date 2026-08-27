@@ -38,13 +38,19 @@ class InsistentCallScreeningService : CallScreeningService() {
         if (callDetails.callDirection != Call.Details.DIRECTION_INCOMING) return
 
         serviceScope.launch {
-            val decision = withTimeoutOrNull(DECISION_BUDGET_MILLIS) {
+            val outcome = withTimeoutOrNull(DECISION_BUDGET_MILLIS) {
                 runCatching { decide(callDetails) }
                     .onFailure { Log.w(TAG, "Falha ao decidir; permitindo a chamada", it) }
-                    .getOrDefault(ScreeningDecision.Allow(AllowReason.ERROR_FAILSAFE))
-            } ?: ScreeningDecision.Allow(AllowReason.TIMEOUT_FAILSAFE)
+                    .getOrDefault(ScreeningOutcome(ScreeningDecision.Allow(AllowReason.ERROR_FAILSAFE)))
+            } ?: ScreeningOutcome(ScreeningDecision.Allow(AllowReason.TIMEOUT_FAILSAFE))
 
-            respond(callDetails, decision)
+            // Responder PRIMEIRO. O relogio de 5 s do framework para aqui; gravar o
+            // bloqueio e notificar sao efeitos colaterais que nao devem disputar esse
+            // orcamento nem atrasar a decisao que o Telecom esta esperando.
+            respond(callDetails, outcome.decision)
+
+            runCatching { applySideEffects(outcome) }
+                .onFailure { Log.w(TAG, "Falha ao registrar o bloqueio", it) }
         }
     }
 
@@ -54,7 +60,7 @@ class InsistentCallScreeningService : CallScreeningService() {
     }
 
     /** Passos 1 a 11 do fluxo: traduz `Call.Details`, consulta o estado local e decide. */
-    private suspend fun decide(callDetails: Call.Details): ScreeningDecision {
+    private suspend fun decide(callDetails: Call.Details): ScreeningOutcome {
         val now = System.currentTimeMillis()
         val locator = ServiceLocator
         val settings = locator.settingsRepository(this).current()
@@ -99,7 +105,7 @@ class InsistentCallScreeningService : CallScreeningService() {
         val policy = locator.policy()
 
         // Se da para decidir sem historico, nem abrimos o banco.
-        policy.preScreen(call)?.let { return it }
+        policy.preScreen(call)?.let { return ScreeningOutcome(it) }
 
         // A partir daqui `normalizedNumber` nao e nulo -- `preScreen` ja teria retornado.
         val history = locator.callHistoryRepository(this)
@@ -109,19 +115,49 @@ class InsistentCallScreeningService : CallScreeningService() {
             windowMillis = settings.windowMillis,
         )
 
-        val decision = policy.evaluate(call, previousAttempts)
-
-        if (decision is ScreeningDecision.Block) {
-            history.recordBlockedCall(
-                normalizedNumber = normalizedNumber,
-                blockedAtMillis = now,
-                attemptsInWindow = decision.attemptsInWindow,
-            )
-            locator.settingsRepository(this).incrementBlockedTotal()
-        }
-
-        return decision
+        return ScreeningOutcome(
+            decision = policy.evaluate(call, previousAttempts),
+            normalizedNumber = normalizedNumber,
+            timestampMillis = now,
+            notifyOnBlock = settings.notifyOnBlock,
+        )
     }
+
+    /**
+     * Registra o bloqueio e avisa o usuario, ja fora do orcamento de resposta.
+     *
+     * Nada aqui influencia a decisao: se falhar, a chamada ja foi recusada do mesmo jeito.
+     */
+    private suspend fun applySideEffects(outcome: ScreeningOutcome) {
+        val decision = outcome.decision
+        if (decision !is ScreeningDecision.Block) return
+        val number = outcome.normalizedNumber ?: return
+
+        ServiceLocator.callHistoryRepository(this).recordBlockedCall(
+            normalizedNumber = number,
+            blockedAtMillis = outcome.timestampMillis,
+            attemptsInWindow = decision.attemptsInWindow,
+        )
+        ServiceLocator.settingsRepository(this).incrementBlockedTotal()
+
+        if (outcome.notifyOnBlock) {
+            ServiceLocator.blockedCallNotifier(this)
+                .notifyBlockedCall(number, decision.attemptsInWindow)
+        }
+    }
+
+    /**
+     * A decisao mais o que os efeitos colaterais precisam saber.
+     *
+     * Existe para que `decide` nao precise gravar nada: quem grava e `applySideEffects`,
+     * depois da resposta ao Telecom.
+     */
+    private data class ScreeningOutcome(
+        val decision: ScreeningDecision,
+        val normalizedNumber: String? = null,
+        val timestampMillis: Long = 0L,
+        val notifyOnBlock: Boolean = false,
+    )
 
     /** Passo 12: traduz a decisao para `CallResponse` e responde. */
     private fun respond(callDetails: Call.Details, decision: ScreeningDecision) {

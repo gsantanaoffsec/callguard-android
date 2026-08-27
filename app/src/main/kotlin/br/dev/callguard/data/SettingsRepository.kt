@@ -58,6 +58,8 @@ class SettingsRepository(context: Context) {
 
     suspend fun setApplyToContacts(value: Boolean) = update { it[KEY_APPLY_TO_CONTACTS] = value }
 
+    suspend fun setNotifyOnBlock(value: Boolean) = update { it[KEY_NOTIFY_ON_BLOCK] = value }
+
     suspend fun incrementBlockedTotal() {
         dataStore.edit { it[KEY_BLOCKED_TOTAL] = (it[KEY_BLOCKED_TOTAL] ?: 0) + 1 }
     }
@@ -78,6 +80,8 @@ class SettingsRepository(context: Context) {
             windowMinutes = this[KEY_WINDOW_MINUTES] ?: ProtectionSettings.DEFAULT_WINDOW_MINUTES,
             applyToContacts = this[KEY_APPLY_TO_CONTACTS]
                 ?: ProtectionSettings.DEFAULT_APPLY_TO_CONTACTS,
+            notifyOnBlock = this[KEY_NOTIFY_ON_BLOCK]
+                ?: ProtectionSettings.DEFAULT_NOTIFY_ON_BLOCK,
         )
 
     companion object {
@@ -85,6 +89,7 @@ class SettingsRepository(context: Context) {
         private val KEY_MAX_CALLS = intPreferencesKey("max_allowed_calls")
         private val KEY_WINDOW_MINUTES = intPreferencesKey("window_minutes")
         private val KEY_APPLY_TO_CONTACTS = booleanPreferencesKey("apply_to_contacts")
+        private val KEY_NOTIFY_ON_BLOCK = booleanPreferencesKey("notify_on_block")
         private val KEY_BLOCKED_TOTAL = intPreferencesKey("blocked_calls_total")
 
         /** Quanto tempo de historico de tentativas guardamos alem da maior janela oferecida. */

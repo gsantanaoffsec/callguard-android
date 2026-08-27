@@ -20,6 +20,13 @@ data class ProtectionSettings(
      * concedida (sem ela o proprio Telecom nao entrega chamadas de contatos ao servico).
      */
     val applyToContacts: Boolean = DEFAULT_APPLY_TO_CONTACTS,
+    /**
+     * Avisar por notificacao silenciosa quando uma chamada for bloqueada.
+     *
+     * Sem isto o app age em silencio absoluto e o usuario so descobre abrindo a tela de
+     * bloqueios -- o que esconde dele uma informacao que e sua.
+     */
+    val notifyOnBlock: Boolean = DEFAULT_NOTIFY_ON_BLOCK,
 ) {
     init {
         require(maxAllowedCalls >= 1) { "maxAllowedCalls deve ser >= 1" }
@@ -32,6 +39,7 @@ data class ProtectionSettings(
         const val DEFAULT_PROTECTION_ENABLED = true
         const val DEFAULT_MAX_ALLOWED_CALLS = 3
         const val DEFAULT_APPLY_TO_CONTACTS = false
+        const val DEFAULT_NOTIFY_ON_BLOCK = true
         const val DEFAULT_WINDOW_MINUTES = 15
 
         val DEFAULT_WINDOW_MILLIS: Long = TimeUnit.MINUTES.toMillis(DEFAULT_WINDOW_MINUTES.toLong())
@@ -49,11 +57,13 @@ data class ProtectionSettings(
             maxAllowedCalls: Int,
             windowMinutes: Int,
             applyToContacts: Boolean,
+            notifyOnBlock: Boolean = DEFAULT_NOTIFY_ON_BLOCK,
         ): ProtectionSettings = ProtectionSettings(
             protectionEnabled = protectionEnabled,
             maxAllowedCalls = maxAllowedCalls.coerceIn(1, 50),
             windowMillis = TimeUnit.MINUTES.toMillis(windowMinutes.coerceIn(1, 24 * 60).toLong()),
             applyToContacts = applyToContacts,
+            notifyOnBlock = notifyOnBlock,
         )
     }
 }

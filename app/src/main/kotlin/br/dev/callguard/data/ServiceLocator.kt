@@ -6,6 +6,7 @@ import br.dev.callguard.core.PhoneNumberNormalizer
 import br.dev.callguard.data.db.CallGuardDatabase
 import br.dev.callguard.phone.ContactLookup
 import br.dev.callguard.phone.TelephonyPhoneNumberNormalizer
+import br.dev.callguard.screening.BlockedCallNotifier
 import br.dev.callguard.screening.CallScreeningRoleController
 
 /**
@@ -27,6 +28,7 @@ object ServiceLocator {
     @Volatile private var normalizer: PhoneNumberNormalizer? = null
     @Volatile private var contactLookup: ContactLookup? = null
     @Volatile private var roleController: CallScreeningRoleController? = null
+    @Volatile private var blockedCallNotifier: BlockedCallNotifier? = null
 
     private val policy = InsistentCallPolicy()
 
@@ -69,6 +71,11 @@ object ServiceLocator {
     fun roleController(context: Context): CallScreeningRoleController =
         roleController ?: synchronized(lock) {
             roleController ?: CallScreeningRoleController(context).also { roleController = it }
+        }
+
+    fun blockedCallNotifier(context: Context): BlockedCallNotifier =
+        blockedCallNotifier ?: synchronized(lock) {
+            blockedCallNotifier ?: BlockedCallNotifier(context).also { blockedCallNotifier = it }
         }
 
     fun policy(): InsistentCallPolicy = policy

@@ -54,6 +54,7 @@ fun HomeScreen(
     onMaxCallsChange: (Int) -> Unit,
     onWindowMinutesChange: (Int) -> Unit,
     onApplyToContactsChange: (Boolean) -> Unit,
+    onNotifyOnBlockChange: (Boolean) -> Unit,
     onAddAllowlistEntry: (rawNumber: String, label: String) -> Boolean,
     onRemoveAllowlistEntry: (String) -> Unit,
     onOpenBlockedCalls: () -> Unit,
@@ -151,6 +152,25 @@ fun HomeScreen(
                         WarningLine(
                             "Permissão de contatos não concedida. Enquanto isso, contatos " +
                                 "salvos continuam passando.",
+                        )
+                    }
+                }
+            }
+
+            item {
+                SectionCard(title = "Avisos") {
+                    SwitchRow(
+                        title = "Avisar quando bloquear",
+                        subtitle = "Notificação silenciosa, sem som e sem vibração. Sem ela " +
+                            "você só descobre um bloqueio abrindo o app.",
+                        checked = uiState.settings.notifyOnBlock,
+                        onCheckedChange = onNotifyOnBlockChange,
+                    )
+                    if (uiState.notificationsNeedPermission) {
+                        Spacer(Modifier.height(8.dp))
+                        WarningLine(
+                            "Permissão de notificações não concedida. Os bloqueios vão " +
+                                "acontecer sem aviso.",
                         )
                     }
                 }

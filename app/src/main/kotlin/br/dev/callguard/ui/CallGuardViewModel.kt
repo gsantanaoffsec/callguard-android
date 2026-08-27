@@ -11,6 +11,7 @@ import br.dev.callguard.data.CallHistoryRepository
 import br.dev.callguard.data.ServiceLocator
 import br.dev.callguard.data.SettingsRepository
 import br.dev.callguard.phone.ContactLookup
+import br.dev.callguard.screening.BlockedCallNotifier
 import br.dev.callguard.screening.CallScreeningRoleController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +32,7 @@ class CallGuardViewModel(
     private val historyRepository: CallHistoryRepository,
     private val roleController: CallScreeningRoleController,
     private val contactLookup: ContactLookup,
+    private val blockedCallNotifier: BlockedCallNotifier,
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(CallGuardUiState())
@@ -69,6 +71,7 @@ class CallGuardViewModel(
                 roleAvailable = roleController.isRoleAvailable(),
                 roleHeld = roleController.isRoleHeld(),
                 hasReadContactsPermission = contactLookup.hasReadContactsPermission(),
+                canPostNotifications = blockedCallNotifier.canNotify(),
             )
         }
     }
@@ -89,6 +92,25 @@ class CallGuardViewModel(
 
     fun setApplyToContacts(value: Boolean) = viewModelScope.launch {
         settingsRepository.setApplyToContacts(value)
+    }
+
+    fun setNotifyOnBlock(value: Boolean) = viewModelScope.launch {
+        settingsRepository.setNotifyOnBlock(value)
+    }
+
+    /**
+     * Libera um numero direto da tela de bloqueios.
+     *
+     * O numero ali ja esta normalizado -- foi essa a chave usada para bloquear --, entao
+     * nao passa pelo normalizador de novo: reprocessar poderia gerar uma chave diferente
+     * e a excecao nao pegaria.
+     */
+    fun allowlistBlockedNumber(normalizedNumber: String) = viewModelScope.launch {
+        allowlistRepository.add(
+            normalizedNumber = normalizedNumber,
+            rawNumber = normalizedNumber,
+            label = normalizedNumber,
+        )
     }
 
     /**
@@ -128,6 +150,7 @@ class CallGuardViewModel(
                     historyRepository = ServiceLocator.callHistoryRepository(application),
                     roleController = ServiceLocator.roleController(application),
                     contactLookup = ServiceLocator.contactLookup(application),
+                    blockedCallNotifier = ServiceLocator.blockedCallNotifier(application),
                 )
             }
         }

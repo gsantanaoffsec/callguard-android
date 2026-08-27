@@ -54,6 +54,12 @@ android {
         getByName("test").kotlin.srcDirs("src/test/kotlin")
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -88,4 +94,9 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
 
     testImplementation(libs.junit)
+    // Room precisa de um Context e de SQLite: Robolectric fornece os dois na JVM, o que
+    // permite testar a transacao do DAO sem emulador.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

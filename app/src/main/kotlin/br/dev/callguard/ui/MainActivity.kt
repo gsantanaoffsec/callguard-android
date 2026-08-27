@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -87,6 +88,13 @@ class MainActivity : ComponentActivity() {
             }
 
             CallGuardTheme {
+                val barraDeAbas: @Composable () -> Unit = {
+                    CallGuardNavigationBar(
+                        currentScreen = screen,
+                        onScreenSelected = { screen = it },
+                    )
+                }
+
                 when (screen) {
                     CallGuardScreen.HOME -> HomeScreen(
                         uiState = uiState,
@@ -120,6 +128,7 @@ class MainActivity : ComponentActivity() {
                         onAddAllowlistEntry = viewModel::addToAllowlist,
                         onRemoveAllowlistEntry = viewModel::removeFromAllowlist,
                         onOpenBlockedCalls = { screen = CallGuardScreen.BLOCKED_CALLS },
+                        bottomBar = barraDeAbas,
                     )
 
                     CallGuardScreen.BLOCKED_CALLS -> BlockedCallsScreen(
@@ -128,6 +137,11 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = CallGuardScreen.HOME },
                         onClearHistory = viewModel::clearBlockedCalls,
                         onAllowlistNumber = viewModel::allowlistBlockedNumber,
+                        bottomBar = barraDeAbas,
+                    )
+
+                    CallGuardScreen.ANONYMOUS_CALL -> AnonymousCallScreen(
+                        bottomBar = barraDeAbas,
                     )
                 }
             }

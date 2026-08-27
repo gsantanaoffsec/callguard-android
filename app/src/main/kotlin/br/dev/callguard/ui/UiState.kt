@@ -31,5 +31,13 @@ data class CallGuardUiState(
         get() = allowlist.map { it.normalizedNumber }.toSet()
 }
 
-/** Telas do app. Um `when` simples basta; nao ha grafo de navegacao para justificar. */
-enum class CallGuardScreen { HOME, BLOCKED_CALLS }
+/**
+ * Abas do app.
+ *
+ * Um `when` sobre este enum basta; tres telas nao justificam um grafo de navegacao.
+ */
+enum class CallGuardScreen(val label: String) {
+    HOME("Proteção"),
+    BLOCKED_CALLS("Bloqueadas"),
+    ANONYMOUS_CALL("Ligar oculto"),
+}

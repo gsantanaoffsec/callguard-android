@@ -119,6 +119,8 @@ Cinco camadas, sem cerimônia inútil:
 | `TelephonyPhoneNumberNormalizer` | E.164 via `PhoneNumberUtils` + regra do 9º dígito. |
 | `ContactLookup` | `PhoneLookup`, só quando muda a decisão. |
 | `BlockedCallNotifier` | Aviso silencioso de bloqueio (canal `IMPORTANCE_LOW`, `setSilent`). |
+| `CallerIdCodes` | Códigos CLIR (`#31#` / `*31#`) em Kotlin puro, testável. |
+| `AnonymousCallScreen` | Aba para ligar com o próprio número oculto, via `ACTION_DIAL`. |
 | `CallGuardViewModel` | Estado da UI; reconsulta papel/permissão a cada `ON_RESUME`. |
 
 ---
@@ -455,7 +457,77 @@ chave diferente e a exceção não pegaria. Itens já liberados aparecem marcado
 
 ---
 
-## 12. Instalação
+## 12. Aba "Ligar oculto" (CLIR)
+
+Permite ligar com **o seu próprio número oculto** — a pessoa vê "Número privado".
+
+Isto não tem nada a ver com falsificar o número de outra pessoa: isso não é possível por
+API pública e não é o que este código faz. É a mesma função que a operadora oferece e que
+já existe nas configurações do telefone.
+
+### Como funciona
+
+O prefixo `#31#` é um código de serviço suplementar padronizado em **3GPP TS 22.030**.
+No AOSP (`GsmMmiCode`), a ação `#` sobre o código de serviço `31` vira:
+
+```java
+static final int CLIR_INVOCATION = 1;   // (restrict CLI presentation)
+```
+
+E em `GsmCdmaPhone.dialInternal` a chamada é discada assim:
+
+```java
+} else if (mmi.isTemporaryModeCLIR()) {
+    return mCT.dialGsm(mmi.mDialingNumber, mmi.getCLIRMode(), ...);
+}
+```
+
+Ou seja: o prefixo **não vai como dígitos** para a rede. A telefonia reconhece o código e
+disca o número real pedindo que a identificação não seja apresentada. `*31#` faz o
+inverso (força a apresentação), útil para quem deixou a ocultação permanente ligada.
+
+### Por que `ACTION_DIAL` e não `ACTION_CALL`
+
+A documentação do próprio `Intent.ACTION_CALL` diz:
+
+> Perform a call to someone specified by the data. […] **most applications should use the
+> `ACTION_DIAL`**.
+
+`ACTION_CALL` discaria sozinho, mas exigiria `CALL_PHONE` — permissão perigosa, que deixa
+um app ligar sem o usuário ver. Num app cuja premissa é pedir só o indispensável, isso não
+se paga por um toque a menos.
+
+`ACTION_DIAL` **não exige permissão nenhuma**: abre o discador com o número preenchido e
+quem inicia a ligação é o usuário. A tela mostra a string exata que será discada, para não
+haver surpresa.
+
+Verificado também que o Telecom não barra este caso: em
+`NewOutgoingCallIntentBroadcaster`, apenas códigos MMI **perigosos** são restritos a apps
+de discagem padrão, e `MmiUtils.isDangerousMmiOrVerticalCode` considera perigosos apenas
+os de **desvio de chamada**. `#31#` não está nessa categoria.
+
+### Limitações, ditas na própria tela
+
+- **Depende da operadora.** Nem toda linha tem a ocultação por chamada habilitada.
+- **Número privado é muito rejeitado.** Vários aparelhos têm "bloquear números
+  desconhecidos" ligado; a ligação pode nem chegar.
+- **Emergência sempre transmite a identidade.** A rede ignora o CLIR nesses casos. A tela
+  detecta números de emergência com `TelephonyManager.isEmergencyNumber` (que não exige
+  permissão) e recusa o caminho oculto, explicando o porquê, em vez de oferecer algo que
+  não funcionaria.
+- **A ironia útil:** o próprio CallGuard não consegue filtrar chamadas ocultas — sem
+  número não há como contar tentativas. Quem liga oculto passa por qualquer app de
+  filtragem, inclusive este.
+
+### Ocultar sempre
+
+Para todas as chamadas saírem ocultas não é preciso app nenhum:
+**Telefone → ⋮ → Configurações → Serviços suplementares → Mostrar meu ID de chamada →
+Ocultar número.**
+
+---
+
+## 13. Instalação
 
 ### Abrir no Android Studio
 
@@ -518,7 +590,7 @@ proteção contra spam → CallGuard**.
 
 ---
 
-## 13. Teste real com outro telefone
+## 14. Teste real com outro telefone
 
 Configure primeiro, para não esperar muito:
 
@@ -563,7 +635,7 @@ I CallGuardScreening: Screening decidiu: BLOCK(CALL_LIMIT_EXCEEDED, tentativas=2
 
 ---
 
-## 14. Troubleshooting Samsung
+## 15. Troubleshooting Samsung
 
 ### O serviço não recebe chamada nenhuma
 
@@ -631,7 +703,7 @@ de bateria (acima) reduz bastante o efeito.
 
 ---
 
-## 15. Estado verificado da build
+## 16. Estado verificado da build
 
 Compilado e testado nesta máquina antes da entrega:
 
@@ -683,6 +755,6 @@ tempo de execução no Samsung. Os passos 12 e 13 existem exatamente para isso.
 
 ---
 
-## 16. Licença e escopo
+## 17. Licença e escopo
 
 Uso pessoal. Todos os dados ficam no aparelho; nada é enviado para lugar nenhum.

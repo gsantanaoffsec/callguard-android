@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Card
@@ -55,7 +54,9 @@ fun BlockedCallsScreen(
     onBack: () -> Unit,
     onClearHistory: () -> Unit,
     onAllowlistNumber: (String) -> Unit,
+    bottomBar: @Composable () -> Unit,
 ) {
+    // Voltar leva para a aba principal, nao para fora do app.
     BackHandler(onBack = onBack)
 
     // Numeros ficam mascarados por padrao; revelar e uma escolha consciente do usuario
@@ -66,11 +67,6 @@ fun BlockedCallsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Chamadas bloqueadas") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
-                    }
-                },
                 actions = {
                     IconButton(onClick = onClearHistory, enabled = blockedCalls.isNotEmpty()) {
                         Icon(Icons.Default.Delete, contentDescription = "Limpar histórico")
@@ -78,6 +74,7 @@ fun BlockedCallsScreen(
                 },
             )
         },
+        bottomBar = bottomBar,
     ) { padding ->
         if (blockedCalls.isEmpty()) {
             Box(

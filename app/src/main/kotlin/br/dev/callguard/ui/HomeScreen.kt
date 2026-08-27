@@ -58,6 +58,7 @@ fun HomeScreen(
     onAddAllowlistEntry: (rawNumber: String, label: String) -> Boolean,
     onRemoveAllowlistEntry: (String) -> Unit,
     onOpenBlockedCalls: () -> Unit,
+    bottomBar: @Composable () -> Unit,
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
 
@@ -65,6 +66,7 @@ fun HomeScreen(
         topBar = {
             TopAppBar(title = { Text("Proteção contra chamadas insistentes") })
         },
+        bottomBar = bottomBar,
     ) { padding ->
         LazyColumn(
             modifier = Modifier

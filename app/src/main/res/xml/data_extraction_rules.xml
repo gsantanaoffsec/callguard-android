@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nenhum dado do app sai do aparelho: nem backup na nuvem, nem transferencia entre
+  dispositivos. O app guarda telefones; nada disso deve ser copiado para fora.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+    </device-transfer>
+</data-extraction-rules>

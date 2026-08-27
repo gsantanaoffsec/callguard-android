@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      UNICA permissao declarada, e mesmo assim opcional na pratica.
+
+      Ela so e SOLICITADA quando o usuario liga "aplicar a regra tambem aos contatos
+      salvos". Sem ela, o proprio Telecom deixa de entregar ao nosso servico as chamadas
+      de numeros que estao na agenda (CallScreeningServiceFilter.startFilterLookup), o
+      que ja produz o comportamento "nunca bloquear contatos" sem custo de privacidade.
+
+      Declarar no manifesto e obrigatorio para poder pedir em runtime; declarar nao
+      concede nada. Enquanto o usuario nao conceder, o sistema a trata como negada.
+
+      NAO declaramos android.permission.BIND_SCREENING_SERVICE em <uses-permission>.
+      Ela e uma permissao de assinatura que pertence ao sistema, nao a nos — veja o
+      atributo android:permission do <service> abaixo.
+
+      Nao precisamos de: READ_CALL_LOG (a API de screening ja entrega o que precisamos),
+      READ_PHONE_STATE, ANSWER_PHONE_CALLS, INTERNET, POST_NOTIFICATIONS,
+      RECEIVE_BOOT_COMPLETED nem FOREGROUND_SERVICE.
+    -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- O app so faz sentido em aparelhos com telefonia. -->
+    <uses-feature
+        android:name="android.hardware.telephony"
+        android:required="true" />
+
+    <application
+        android:name=".CallGuardApplication"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.CallGuard">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.CallGuard"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          O servico de filtragem.
+
+          android:permission="android.permission.BIND_SCREENING_SERVICE" NAO e uma
+          permissao que pedimos: e uma trava. Ela exige que quem fizer bind neste
+          servico possua essa permissao de assinatura, e so o processo do sistema
+          (Telecom) a possui. Sem esse atributo, qualquer aplicativo poderia se
+          conectar aqui.
+
+          android:exported="true" e necessario porque quem faz o bind e outro processo
+          (o system_server); a permissao acima e o que mantem isso seguro.
+
+          O intent-filter com a acao android.telecom.CallScreeningService e como o
+          Telecom nos descobre e como aparecemos na lista de apps de identificacao de
+          chamadas nas configuracoes do sistema.
+
+          Nao ha ForegroundService: o Telecom faz bind sob demanda quando uma chamada
+          chega e desfaz depois da resposta. Esse e o mecanismo oficial.
+        -->
+        <service
+            android:name=".screening.InsistentCallScreeningService"
+            android:exported="true"
+            android:permission="android.permission.BIND_SCREENING_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+
+    </application>
+
+</manifest>

@@ -92,6 +92,27 @@
             </intent-filter>
         </service>
 
+        <!--
+          Necessario para abrir e compartilhar o arquivo de log.
+
+          Desde o Android 7 nao e permitido entregar um caminho "file://" para outro
+          aplicativo; o FileProvider gera uma URI de conteudo temporaria e com permissao
+          limitada. Ele expoe somente a pasta de logs (veja res/xml/file_paths.xml).
+
+          exported="false" e grantUriPermissions="true": ninguem consulta este provider
+          diretamente; ele so funciona com a permissao pontual que o app concede ao
+          disparar o Intent.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 
 </manifest>

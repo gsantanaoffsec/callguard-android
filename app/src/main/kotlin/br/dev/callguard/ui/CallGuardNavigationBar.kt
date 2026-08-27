@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -34,4 +35,5 @@ private val CallGuardScreen.icon: ImageVector
         CallGuardScreen.HOME -> Icons.Default.Lock
         CallGuardScreen.BLOCKED_CALLS -> Icons.AutoMirrored.Filled.List
         CallGuardScreen.ANONYMOUS_CALL -> Icons.Default.Call
+        CallGuardScreen.LOGS -> Icons.Default.Settings
     }

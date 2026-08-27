@@ -42,3 +42,31 @@ data class BlockedCallEntity(
     @ColumnInfo(name = "blocked_at") val blockedAt: Long,
     @ColumnInfo(name = "attempts_in_window") val attemptsInWindow: Int,
 )
+
+/**
+ * Uma decisao do servico de filtragem, permitida ou bloqueada.
+ *
+ * Existe para o arquivo de log legivel que o usuario abre no celular. E separado de
+ * `call_attempts` (que so guarda instantes, para a janela deslizante) porque aqui
+ * interessa o motivo da decisao, nao a matematica da regra.
+ */
+@Entity(
+    tableName = "screening_events",
+    indices = [Index(value = ["occurred_at"])],
+)
+data class ScreeningEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    @ColumnInfo(name = "occurred_at") val occurredAt: Long,
+    /** `null` quando o Android nao forneceu o numero (apresentacao restrita). */
+    @ColumnInfo(name = "normalized_number") val normalizedNumber: String?,
+    @ColumnInfo(name = "blocked") val blocked: Boolean,
+    /** Nome do `AllowReason`/`BlockReason`, traduzido so na hora de exibir. */
+    @ColumnInfo(name = "reason") val reason: String,
+    @ColumnInfo(name = "attempts_in_window") val attemptsInWindow: Int,
+    /**
+     * STIR/SHAKEN: o que a rede disse sobre a autenticidade do numero de origem.
+     * Valores de `Connection.VERIFICATION_STATUS_*`. `null` abaixo do Android 11, onde
+     * `Call.Details.getCallerNumberVerificationStatus()` ainda nao existe.
+     */
+    @ColumnInfo(name = "verification_status") val verificationStatus: Int?,
+)

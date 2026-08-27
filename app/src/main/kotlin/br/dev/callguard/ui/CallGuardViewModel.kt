@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import br.dev.callguard.data.AllowlistRepository
 import br.dev.callguard.data.CallHistoryRepository
+import br.dev.callguard.data.ScreeningLogRepository
 import br.dev.callguard.data.ServiceLocator
 import br.dev.callguard.data.SettingsRepository
 import br.dev.callguard.phone.ContactLookup
@@ -33,6 +34,7 @@ class CallGuardViewModel(
     private val roleController: CallScreeningRoleController,
     private val contactLookup: ContactLookup,
     private val blockedCallNotifier: BlockedCallNotifier,
+    private val screeningLogRepository: ScreeningLogRepository,
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(CallGuardUiState())
@@ -62,6 +64,12 @@ class CallGuardViewModel(
                 _uiState.update { it.copy(blockedCalls = blocked) }
             }
         }
+        viewModelScope.launch {
+            screeningLogRepository.observeEvents().collect { eventos ->
+                _uiState.update { it.copy(screeningEvents = eventos) }
+            }
+        }
+        _uiState.update { it.copy(logFilePath = screeningLogRepository.friendlyLogPath()) }
         refreshSystemState()
     }
 
@@ -135,6 +143,52 @@ class CallGuardViewModel(
         allowlistRepository.remove(normalizedNumber)
     }
 
+    /**
+     * Regenera o arquivo e devolve a URI de conteudo para abrir ou compartilhar.
+     *
+     * Uma URI do FileProvider, e nao um caminho "file://": desde o Android 7 entregar um
+     * caminho direto a outro aplicativo lanca FileUriExposedException.
+     */
+    fun prepareLogFile(onReady: (android.net.Uri) -> Unit) = viewModelScope.launch {
+        val resultado = runCatching {
+            val arquivo = screeningLogRepository.writeLogFile()
+            androidx.core.content.FileProvider.getUriForFile(
+                getApplication(),
+                "${getApplication<Application>().packageName}.fileprovider",
+                arquivo,
+            )
+        }
+        resultado.onSuccess { uri ->
+            _uiState.update { it.copy(logStatusMessage = "Arquivo atualizado.") }
+            onReady(uri)
+        }.onFailure { erro ->
+            _uiState.update {
+                it.copy(logStatusMessage = "Não foi possível gerar o arquivo: ${erro.message}")
+            }
+        }
+    }
+
+    fun refreshLogFile() = viewModelScope.launch {
+        val resultado = runCatching { screeningLogRepository.writeLogFile() }
+        _uiState.update {
+            it.copy(
+                logStatusMessage = resultado.fold(
+                    onSuccess = { arquivo -> "Arquivo atualizado (${arquivo.length()} bytes)." },
+                    onFailure = { erro -> "Falha ao gerar: ${erro.message}" },
+                ),
+            )
+        }
+    }
+
+    fun setLogStatusMessage(mensagem: String?) {
+        _uiState.update { it.copy(logStatusMessage = mensagem) }
+    }
+
+    fun clearLogs() = viewModelScope.launch {
+        screeningLogRepository.clear()
+        _uiState.update { it.copy(logStatusMessage = "Registros apagados.") }
+    }
+
     fun clearBlockedCalls() = viewModelScope.launch {
         historyRepository.clearBlockedCalls()
         settingsRepository.resetBlockedTotal()
@@ -151,6 +205,7 @@ class CallGuardViewModel(
                     roleController = ServiceLocator.roleController(application),
                     contactLookup = ServiceLocator.contactLookup(application),
                     blockedCallNotifier = ServiceLocator.blockedCallNotifier(application),
+                    screeningLogRepository = ServiceLocator.screeningLogRepository(application),
                 )
             }
         }

@@ -121,6 +121,8 @@ Cinco camadas, sem cerimônia inútil:
 | `BlockedCallNotifier` | Aviso silencioso de bloqueio (canal `IMPORTANCE_LOW`, `setSilent`). |
 | `CallerIdCodes` | Códigos CLIR (`#31#` / `*31#`) em Kotlin puro, testável. |
 | `AnonymousCallScreen` | Aba para ligar com o próprio número oculto, via `ACTION_DIAL`. |
+| `PhoneOrigin` | Procedência do número (DDD, região, tipo de linha) em Kotlin puro. |
+| `ScreeningLogRepository` | Registro das decisões e geração do arquivo de log legível. |
 | `CallGuardViewModel` | Estado da UI; reconsulta papel/permissão a cada `ON_RESUME`. |
 
 ---
@@ -527,7 +529,72 @@ Ocultar número.**
 
 ---
 
-## 13. Instalação
+## 13. Aba "Logs"
+
+Registro legível do que o app decidiu — **toda** chamada analisada, permitida ou
+bloqueada. Sem as permitidas não daria para responder "por que essa não foi bloqueada?".
+
+### O arquivo
+
+```
+Android/data/br.dev.callguard/files/logs/callguard-registro.txt
+```
+
+`getExternalFilesDir()`: visível nos gerenciadores de arquivos (o "Meus Arquivos" da
+Samsung), **sem exigir permissão de armazenamento**, e a partir do Android 11 não legível
+por outros aplicativos. É texto puro, escrito para ser lido por gente:
+
+```
+27/08/2026 20:14:03
+  Número....: +5511999998888
+  Procedência: São Paulo · SP · celular
+  DDD.......: 11
+  Verificação da rede: aprovada — a rede confirma que o número é legítimo
+  Resultado.: BLOQUEADA
+  Motivo....: Limite de chamadas excedido
+  Tentativas recentes: 4
+```
+
+Gerado sob demanda, não a cada chamada: escrever em disco dentro do fluxo de screening
+seria trabalho desnecessário num caminho que tem orçamento de tempo. A aba também mostra
+os registros direto na tela, para o caso comum de só querer conferir.
+
+Abrir e compartilhar usam **`FileProvider`** — desde o Android 7 entregar um caminho
+`file://` a outro app lança `FileUriExposedException`. O provider expõe somente a pasta de
+logs, é `exported="false"` e funciona só com a permissão pontual concedida no Intent.
+
+### Procedência do número
+
+Tudo derivado offline, sem rede e sem permissão:
+
+| Campo | Como |
+|---|---|
+| País | Código do país no E.164 |
+| DDD e região | Tabela dos 67 códigos do Plano Geral de Códigos Nacionais da ANATEL |
+| Tipo de linha | Estrutura do número: celular, fixo, 0800, 0300/0500, serviço, número curto |
+| Verificação da rede | `Call.Details.getCallerNumberVerificationStatus()` (STIR/SHAKEN) |
+
+A verificação da rede é especialmente útil aqui: é o operador dizendo se o número de
+origem foi autenticado ou se pode estar **falsificado**. Existe a partir do Android 11 —
+abaixo disso o campo fica nulo e o app diz "não disponível neste Android", em vez de
+inventar um valor.
+
+### Por que NÃO existe campo "operadora"
+
+Foi pedido, e é o único item que não dá para entregar honestamente.
+
+Com a **portabilidade numérica** (Brasil, 2008), o prefixo deixou de indicar a operadora:
+um número originalmente Vivo pode estar na Claro hoje. Descobrir a operadora atual exige
+consultar a base da ABR Telecom — internet e credencial, ambas fora do escopo de um app
+que não acessa a rede.
+
+Preencher esse campo pelo prefixo seria informação errada com cara de certa, e num app
+sobre chamadas indesejadas isso levaria a conclusões erradas. O arquivo e a tela dizem
+explicitamente por que a operadora não aparece.
+
+---
+
+## 14. Instalação
 
 ### Abrir no Android Studio
 
@@ -590,7 +657,7 @@ proteção contra spam → CallGuard**.
 
 ---
 
-## 14. Teste real com outro telefone
+## 15. Teste real com outro telefone
 
 Configure primeiro, para não esperar muito:
 
@@ -635,7 +702,7 @@ I CallGuardScreening: Screening decidiu: BLOCK(CALL_LIMIT_EXCEEDED, tentativas=2
 
 ---
 
-## 15. Troubleshooting Samsung
+## 16. Troubleshooting Samsung
 
 ### O serviço não recebe chamada nenhuma
 
@@ -703,14 +770,14 @@ de bateria (acima) reduz bastante o efeito.
 
 ---
 
-## 16. Estado verificado da build
+## 17. Estado verificado da build
 
 Compilado e testado nesta máquina antes da entrega:
 
 ```
 > Task :app:compileDebugKotlin        (sem erros)
 > Task :app:kspDebugKotlin            (Room gerou os DAOs)
-> Task :app:testDebugUnitTest         39 testes, 0 falhas
+> Task :app:testDebugUnitTest         56 testes, 0 falhas
 > Task :app:assembleRelease           (R8 + shrinkResources)
 BUILD SUCCESSFUL
 ```
@@ -718,7 +785,9 @@ BUILD SUCCESSFUL
 | Suíte | Testes | Falhas |
 |---|---|---|
 | `InsistentCallPolicyTest` | 22 | 0 |
+| `PhoneOriginTest` | 11 | 0 |
 | `CallAttemptDaoTest` | 6 | 0 |
+| `CallerIdCodesTest` | 6 | 0 |
 | `BrazilPhoneRulesTest` | 5 | 0 |
 | `PhoneNumberMaskerTest` | 3 | 0 |
 | `ProtectionSettingsTest` | 3 | 0 |
@@ -755,6 +824,6 @@ tempo de execução no Samsung. Os passos 12 e 13 existem exatamente para isso.
 
 ---
 
-## 17. Licença e escopo
+## 18. Licença e escopo
 
 Uso pessoal. Todos os dados ficam no aparelho; nada é enviado para lugar nenhum.

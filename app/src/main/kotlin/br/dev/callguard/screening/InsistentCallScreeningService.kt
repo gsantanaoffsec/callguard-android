@@ -2,6 +2,7 @@ package br.dev.callguard.screening
 
 import android.telecom.Call
 import android.telecom.CallScreeningService
+import android.os.Build
 import android.telecom.PhoneAccount
 import android.telephony.TelephonyManager
 import android.util.Log
@@ -103,9 +104,20 @@ class InsistentCallScreeningService : CallScreeningService() {
         )
 
         val policy = locator.policy()
+        val verificationStatus = callDetails.verificationStatusOrNull()
 
-        // Se da para decidir sem historico, nem abrimos o banco.
-        policy.preScreen(call)?.let { return ScreeningOutcome(it) }
+        // Se da para decidir sem historico, nem abrimos o banco. Ainda assim o evento
+        // leva numero, horario e verificacao: o log precisa explicar por que a chamada
+        // passou, e "(numero nao informado)" seria uma resposta errada.
+        policy.preScreen(call)?.let { permitida ->
+            return ScreeningOutcome(
+                decision = permitida,
+                normalizedNumber = normalizedNumber,
+                timestampMillis = now,
+                notifyOnBlock = settings.notifyOnBlock,
+                verificationStatus = verificationStatus,
+            )
+        }
 
         // A partir daqui `normalizedNumber` nao e nulo -- `preScreen` ja teria retornado.
         val history = locator.callHistoryRepository(this)
@@ -120,8 +132,20 @@ class InsistentCallScreeningService : CallScreeningService() {
             normalizedNumber = normalizedNumber,
             timestampMillis = now,
             notifyOnBlock = settings.notifyOnBlock,
+            verificationStatus = verificationStatus,
         )
     }
+
+    /**
+     * STIR/SHAKEN: o que a rede diz sobre a autenticidade do numero de origem.
+     * Disponivel a partir do Android 11; abaixo disso devolve `null`.
+     */
+    private fun Call.Details.verificationStatusOrNull(): Int? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching { callerNumberVerificationStatus }.getOrNull()
+        } else {
+            null
+        }
 
     /**
      * Registra o bloqueio e avisa o usuario, ja fora do orcamento de resposta.
@@ -130,6 +154,21 @@ class InsistentCallScreeningService : CallScreeningService() {
      */
     private suspend fun applySideEffects(outcome: ScreeningOutcome) {
         val decision = outcome.decision
+
+        // O log guarda TODA decisao, inclusive as permitidas: sem isso nao da para
+        // responder "por que essa chamada nao foi bloqueada?".
+        ServiceLocator.screeningLogRepository(this).record(
+            occurredAt = outcome.timestampMillis.takeIf { it > 0L } ?: System.currentTimeMillis(),
+            normalizedNumber = outcome.normalizedNumber,
+            blocked = decision is ScreeningDecision.Block,
+            reason = when (decision) {
+                is ScreeningDecision.Allow -> decision.reason.name
+                is ScreeningDecision.Block -> decision.reason.name
+            },
+            attemptsInWindow = (decision as? ScreeningDecision.Block)?.attemptsInWindow ?: 0,
+            verificationStatus = outcome.verificationStatus,
+        )
+
         if (decision !is ScreeningDecision.Block) return
         val number = outcome.normalizedNumber ?: return
 
@@ -157,6 +196,7 @@ class InsistentCallScreeningService : CallScreeningService() {
         val normalizedNumber: String? = null,
         val timestampMillis: Long = 0L,
         val notifyOnBlock: Boolean = false,
+        val verificationStatus: Int? = null,
     )
 
     /** Passo 12: traduz a decisao para `CallResponse` e responde. */

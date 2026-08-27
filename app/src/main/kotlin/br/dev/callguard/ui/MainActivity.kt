@@ -143,6 +143,48 @@ class MainActivity : ComponentActivity() {
                     CallGuardScreen.ANONYMOUS_CALL -> AnonymousCallScreen(
                         bottomBar = barraDeAbas,
                     )
+
+                    CallGuardScreen.LOGS -> LogsScreen(
+                        events = uiState.screeningEvents,
+                        friendlyPath = uiState.logFilePath,
+                        statusMessage = uiState.logStatusMessage,
+                        onGenerateAndOpen = {
+                            viewModel.prepareLogFile { uri ->
+                                val abrir = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, "text/plain")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                // Nem todo aparelho tem um leitor de texto instalado; nesse
+                                // caso o caminho da pasta continua na tela para o usuario
+                                // navegar ate la pelo gerenciador de arquivos.
+                                runCatching { startActivity(abrir) }.onFailure {
+                                    viewModel.setLogStatusMessage(
+                                        "Arquivo gerado, mas nenhum aplicativo deste " +
+                                            "aparelho abre arquivos de texto. Use " +
+                                            "\"Enviar para outro app\" ou abra a pasta " +
+                                            "pelo Meus Arquivos.",
+                                    )
+                                }
+                            }
+                        },
+                        onGenerateAndShare = {
+                            viewModel.prepareLogFile { uri ->
+                                val enviar = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                runCatching {
+                                    startActivity(
+                                        Intent.createChooser(enviar, "Enviar registro"),
+                                    )
+                                }
+                            }
+                        },
+                        onRefreshFile = viewModel::refreshLogFile,
+                        onClear = viewModel::clearLogs,
+                        bottomBar = barraDeAbas,
+                    )
                 }
             }
         }

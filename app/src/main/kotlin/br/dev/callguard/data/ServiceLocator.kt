@@ -29,6 +29,7 @@ object ServiceLocator {
     @Volatile private var contactLookup: ContactLookup? = null
     @Volatile private var roleController: CallScreeningRoleController? = null
     @Volatile private var blockedCallNotifier: BlockedCallNotifier? = null
+    @Volatile private var screeningLogRepository: ScreeningLogRepository? = null
 
     private val policy = InsistentCallPolicy()
 
@@ -76,6 +77,14 @@ object ServiceLocator {
     fun blockedCallNotifier(context: Context): BlockedCallNotifier =
         blockedCallNotifier ?: synchronized(lock) {
             blockedCallNotifier ?: BlockedCallNotifier(context).also { blockedCallNotifier = it }
+        }
+
+    fun screeningLogRepository(context: Context): ScreeningLogRepository =
+        screeningLogRepository ?: synchronized(lock) {
+            screeningLogRepository ?: ScreeningLogRepository(
+                context = context,
+                dao = database(context).screeningEventDao(),
+            ).also { screeningLogRepository = it }
         }
 
     fun policy(): InsistentCallPolicy = policy

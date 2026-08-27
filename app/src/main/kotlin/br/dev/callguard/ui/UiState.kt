@@ -3,6 +3,7 @@ package br.dev.callguard.ui
 import br.dev.callguard.core.ProtectionSettings
 import br.dev.callguard.data.db.AllowlistEntryEntity
 import br.dev.callguard.data.db.BlockedCallEntity
+import br.dev.callguard.data.db.ScreeningEventEntity
 
 /** Estado unico da tela principal. */
 data class CallGuardUiState(
@@ -14,6 +15,10 @@ data class CallGuardUiState(
     val allowlist: List<AllowlistEntryEntity> = emptyList(),
     val blockedCalls: List<BlockedCallEntity> = emptyList(),
     val blockedCallsTotal: Int = 0,
+    val screeningEvents: List<ScreeningEventEntity> = emptyList(),
+    val logFilePath: String = "",
+    /** Mensagem curta apos gerar/abrir o arquivo. Some na proxima acao. */
+    val logStatusMessage: String? = null,
 ) {
     /** A regra so tem efeito real quando o papel foi concedido e a protecao esta ligada. */
     val isActuallyProtecting: Boolean get() = roleHeld && settings.protectionEnabled
@@ -40,4 +45,5 @@ enum class CallGuardScreen(val label: String) {
     HOME("Proteção"),
     BLOCKED_CALLS("Bloqueadas"),
     ANONYMOUS_CALL("Ligar oculto"),
+    LOGS("Logs"),
 }

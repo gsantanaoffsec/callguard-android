@@ -2,6 +2,8 @@ package br.dev.callguard.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -362,7 +364,15 @@ private fun SwitchRow(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Linha de opcoes que quebra para a linha de baixo quando nao cabe.
+ *
+ * Com `Row` simples os cinco chips de intervalo nao cabiam na largura da tela: o ultimo
+ * era espremido na horizontal, o texto quebrava em duas linhas e o botao ficava mais alto
+ * que os outros. `FlowRow` passa o excedente para a proxima linha e todos mantem a mesma
+ * altura.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun <T> ChipRow(
     options: List<T>,
@@ -370,12 +380,16 @@ private fun <T> ChipRow(
     label: (T) -> String,
     onSelected: (T) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         options.forEach { option ->
             FilterChip(
                 selected = option == selected,
                 onClick = { onSelected(option) },
-                label = { Text(label(option)) },
+                label = { Text(label(option), maxLines = 1) },
             )
         }
     }

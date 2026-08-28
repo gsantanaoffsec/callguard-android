@@ -1,8 +1,7 @@
 package br.dev.callguard.ui
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,26 +9,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,28 +21,39 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.background
-import androidx.compose.foundation.text.KeyboardOptions
 import br.dev.callguard.core.CheckLevel
 import br.dev.callguard.core.DiagnosticCheck
 import br.dev.callguard.core.DiagnosticFix
 import br.dev.callguard.core.DiagnosticsReport
 import br.dev.callguard.core.NumberSimulation
 import br.dev.callguard.core.ScreeningDecision
+import br.dev.callguard.ui.design.CgColor
+import br.dev.callguard.ui.design.CgDataRow
+import br.dev.callguard.ui.design.CgDialog
+import br.dev.callguard.ui.design.CgDivider
+import br.dev.callguard.ui.design.CgGap
+import br.dev.callguard.ui.design.CgPrimaryButton
+import br.dev.callguard.ui.design.CgScreen
+import br.dev.callguard.ui.design.CgSecondaryButton
+import br.dev.callguard.ui.design.CgSectionHeader
+import br.dev.callguard.ui.design.CgSpace
+import br.dev.callguard.ui.design.CgStatusBlock
+import br.dev.callguard.ui.design.CgSurface
+import br.dev.callguard.ui.design.CgTag
+import br.dev.callguard.ui.design.CgTextAction
+import br.dev.callguard.ui.design.CgTextField
+import br.dev.callguard.ui.design.CgType
 
 /**
- * Central de diagnostico.
+ * Central de diagnóstico.
  *
- * Existe porque "o app parece que nao esta bloqueando" e a duvida mais cara de um app
- * de filtragem: o usuario nao tem como ver o que nao aconteceu. Esta tela responde com
- * fatos verificaveis no proprio aparelho -- inclusive deixando ele testar um numero de
- * verdade contra as regras e o historico reais, sem gravar nada.
+ * A pergunta que a tela responde — "está mesmo funcionando?" — é respondida no topo, em
+ * tipografia grande, antes de qualquer detalhe. O resto é uma lista de verificações em
+ * que a cor aparece só no ponto à esquerda: um laudo com sete blocos coloridos seria
+ * ilegível justamente quando mais importa.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiagnosticsScreen(
     report: DiagnosticsReport?,
@@ -78,247 +72,181 @@ fun DiagnosticsScreen(
     var numeroDeTeste by remember { mutableStateOf("") }
     var confirmandoLimpeza by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Diagnóstico") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
-                    }
-                },
-            )
-        },
-        bottomBar = bottomBar,
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(vertical = 12.dp),
-        ) {
-            if (report == null) {
-                item {
-                    Text(
-                        "Coletando informações do aparelho…",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            } else {
-                item { ResumoCard(report) }
-
-                checkItems(report.checks, onFix)
-
-                item { TesteDeNumeroCard(
+    CgScreen(title = "Diagnóstico", onBack = onBack, bottomBar = bottomBar) {
+        if (report == null) {
+            item("carregando") {
+                Text(
+                    text = "Coletando informações do aparelho…",
+                    style = CgType.body,
+                    color = CgColor.TextSecondary,
+                )
+            }
+        } else {
+            item("resumo") { ResumoDoLaudo(report) }
+            verificacoes(report.checks, onFix)
+            item("teste") {
+                TesteDeNumero(
                     numero = numeroDeTeste,
                     onNumeroChange = {
                         numeroDeTeste = it
                         onClearSimulation()
                     },
                     simulation = simulation,
-                    onSimulate = { onSimulate(numeroDeTeste) },
-                ) }
-
-                item { ArmazenamentoCard(report) }
-            }
-
-            item {
-                BackupCard(
-                    mensagem = backupMessage,
-                    onExport = onExport,
-                    onImport = onImport,
+                    onSimular = { onSimulate(numeroDeTeste) },
                 )
             }
+            item("armazenamento") { Armazenamento(report) }
+        }
 
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Manutenção", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Apagar o histórico de tentativas zera a contagem de todos os " +
-                                "números. As regras, listas e o registro de decisões continuam.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row {
-                            OutlinedButton(onClick = { confirmandoLimpeza = true }) {
-                                Text("Zerar contagens")
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            TextButton(onClick = onRefresh) { Text("Atualizar laudo") }
-                        }
-                    }
-                }
+        item("backup") { Backup(backupMessage, onExport, onImport) }
+
+        item("manutencao") {
+            Column(Modifier.fillMaxWidth()) {
+                CgSectionHeader(
+                    label = "Manutenção",
+                    description = "Zerar as contagens faz todo número voltar a ter zero " +
+                        "tentativas. As regras, listas e registros continuam.",
+                )
+                CgSecondaryButton(
+                    text = "Zerar contagens",
+                    onClick = { confirmandoLimpeza = true },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                CgGap(CgSpace.sm)
+                CgTextAction(
+                    text = "Atualizar laudo",
+                    onClick = onRefresh,
+                    color = CgColor.TextSecondary,
+                )
             }
-
-            item { Spacer(Modifier.height(24.dp)) }
         }
     }
 
     if (confirmandoLimpeza) {
-        AlertDialog(
-            onDismissRequest = { confirmandoLimpeza = false },
-            title = { Text("Zerar contagens?") },
-            text = {
-                Text(
-                    "Todo número volta a ter zero tentativas registradas. Quem já estava " +
-                        "perto do limite ganha as chamadas de volta.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmandoLimpeza = false
-                    onClearAttempts()
-                }) { Text("Zerar") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmandoLimpeza = false }) { Text("Cancelar") }
+        CgDialog(
+            title = "Zerar contagens?",
+            description = "Todo número volta a ter zero tentativas registradas. Quem já " +
+                "estava perto do limite ganha as chamadas de volta.",
+            onDismiss = { confirmandoLimpeza = false },
+            confirmText = "Zerar",
+            destructive = true,
+            onConfirm = {
+                confirmandoLimpeza = false
+                onClearAttempts()
             },
         )
     }
 }
 
-/** Um `DiagnosticCheck` por linha, extraido para manter a lista principal legivel. */
-private fun androidx.compose.foundation.lazy.LazyListScope.checkItems(
+@Composable
+private fun ResumoDoLaudo(report: DiagnosticsReport) {
+    val (manchete, apoio) = when (report.worstLevel) {
+        CheckLevel.BLOCKING ->
+            "A proteção não está funcionando." to
+                "Há pelo menos um item abaixo que impede o bloqueio de acontecer."
+
+        CheckLevel.ATTENTION ->
+            "Protegendo, com ressalvas." to
+                "O bloqueio acontece, mas há um item que vale ajustar."
+
+        CheckLevel.OK ->
+            "Tudo certo." to
+                "As ligações passam pelo CallGuard antes de tocar. Regra em vigor: " +
+                    "${report.activePolicy.source.label} — ${report.activePolicy.describe()}."
+    }
+
+    CgStatusBlock(
+        active = report.worstLevel != CheckLevel.BLOCKING,
+        headline = manchete,
+        supporting = apoio,
+    )
+}
+
+private fun LazyListScope.verificacoes(
     checks: List<DiagnosticCheck>,
     onFix: (DiagnosticFix) -> Unit,
 ) {
-    checks.forEach { check ->
-        item(key = check.title) { CheckCard(check, onFix) }
-    }
-}
-
-@Composable
-private fun ResumoCard(report: DiagnosticsReport) {
-    val (cor, titulo, texto) = when (report.worstLevel) {
-        CheckLevel.BLOCKING -> Triple(
-            MaterialTheme.colorScheme.errorContainer,
-            "A proteção NÃO está funcionando",
-            "Existe pelo menos um item abaixo que impede o bloqueio de acontecer.",
-        )
-
-        CheckLevel.ATTENTION -> Triple(
-            MaterialTheme.colorScheme.tertiaryContainer,
-            "Protegendo, com ressalvas",
-            "O bloqueio acontece, mas há um item que vale ajustar.",
-        )
-
-        CheckLevel.OK -> Triple(
-            MaterialTheme.colorScheme.primaryContainer,
-            "Tudo certo",
-            "As ligações passam pelo CallGuard antes de tocar.",
-        )
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = cor),
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
-            Text(texto, style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Regra em vigor: ${report.activePolicy.source.label} — " +
-                    report.activePolicy.describe(),
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-    }
-}
-
-@Composable
-private fun CheckCard(check: DiagnosticCheck, onFix: (DiagnosticFix) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(16.dp)) {
-            Marcador(check.level)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    check.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    check.detail,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                // O botao de correcao so aparece onde existe uma correcao possivel: um
-                // item informativo com botao desabilitado seria ruido.
-                val correcao = check.fix
-                if (correcao != null) {
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = { onFix(correcao) }) {
-                        Text(check.fixLabel ?: "Corrigir")
-                    }
-                }
-            }
+    item("verif-cabecalho") { CgSectionHeader("Verificações") }
+    items(count = checks.size, key = { i -> "chk-${checks[i].title}" }) { indice ->
+        Column {
+            ItemDeVerificacao(checks[indice], onFix)
+            if (indice < checks.lastIndex) CgDivider()
         }
     }
 }
 
 /**
- * Um circulo colorido em vez de icones diferentes: o estado precisa ser lido de relance,
- * na vertical, sem o olho ter que interpretar simbolo por simbolo.
+ * Uma verificação.
+ *
+ * O estado é dito pelo ponto à esquerda e reforçado pelo texto do detalhe — nunca só
+ * pela cor. O botão de correção só aparece onde existe correção possível: um item
+ * informativo com botão desabilitado seria ruído.
  */
 @Composable
-private fun Marcador(level: CheckLevel) {
-    val cor = when (level) {
-        CheckLevel.OK -> MaterialTheme.colorScheme.primary
-        CheckLevel.ATTENTION -> MaterialTheme.colorScheme.tertiary
-        CheckLevel.BLOCKING -> MaterialTheme.colorScheme.error
+private fun ItemDeVerificacao(check: DiagnosticCheck, onFix: (DiagnosticFix) -> Unit) {
+    val cor = when (check.level) {
+        CheckLevel.OK -> CgColor.Positive
+        CheckLevel.ATTENTION -> CgColor.Warning
+        CheckLevel.BLOCKING -> CgColor.Negative
     }
-    Spacer(
-        Modifier
-            .padding(top = 4.dp)
-            .size(10.dp)
-            .clip(CircleShape)
-            .background(cor),
-    )
+
+    Row(Modifier.fillMaxWidth().padding(vertical = CgSpace.lg)) {
+        Spacer(
+            Modifier
+                .padding(top = 7.dp)
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(cor),
+        )
+        Spacer(Modifier.width(CgSpace.lg))
+        Column(Modifier.weight(1f)) {
+            Text(text = check.title, style = CgType.subtitle, color = CgColor.TextPrimary)
+            Spacer(Modifier.height(CgSpace.xs))
+            Text(text = check.detail, style = CgType.caption, color = CgColor.TextSecondary)
+
+            val correcao = check.fix
+            if (correcao != null) {
+                CgGap(CgSpace.md)
+                CgSecondaryButton(
+                    text = check.fixLabel ?: "Corrigir",
+                    onClick = { onFix(correcao) },
+                )
+            }
+        }
+    }
 }
 
 @Composable
-private fun TesteDeNumeroCard(
+private fun TesteDeNumero(
     numero: String,
     onNumeroChange: (String) -> Unit,
     simulation: NumberSimulation?,
-    onSimulate: () -> Unit,
+    onSimular: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text("Testar um número", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "Mostra o que aconteceria se este número ligasse agora, usando as regras e o " +
-                    "histórico reais. Nada é gravado: consultar não conta como ligação.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = numero,
-                onValueChange = onNumeroChange,
-                label = { Text("Número") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            Button(onClick = onSimulate, enabled = numero.isNotBlank()) { Text("Simular") }
+    Column(Modifier.fillMaxWidth()) {
+        CgSectionHeader(
+            label = "Testar um número",
+            description = "Mostra o que aconteceria se ele ligasse agora, com as regras e o " +
+                "histórico reais. Nada é gravado: consultar não conta como ligação.",
+        )
+        CgTextField(
+            value = numero,
+            onValueChange = onNumeroChange,
+            label = "Número",
+            placeholder = "(11) 99999-8888",
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+        )
+        CgGap(CgSpace.md)
+        CgPrimaryButton(
+            text = "Simular",
+            onClick = onSimular,
+            enabled = numero.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        )
 
-            if (simulation != null) {
-                Spacer(Modifier.height(12.dp))
-                HorizontalDivider()
-                Spacer(Modifier.height(12.dp))
-                ResultadoDaSimulacao(simulation)
-            }
+        if (simulation != null) {
+            CgGap(CgSpace.xl)
+            ResultadoDaSimulacao(simulation)
         }
     }
 }
@@ -326,24 +254,20 @@ private fun TesteDeNumeroCard(
 @Composable
 private fun ResultadoDaSimulacao(s: NumberSimulation) {
     val bloqueia = s.decision is ScreeningDecision.Block
-    Surface(
-        color = if (bloqueia) {
-            MaterialTheme.colorScheme.errorContainer
-        } else {
-            MaterialTheme.colorScheme.primaryContainer
-        },
-        shape = MaterialTheme.shapes.medium,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(12.dp)) {
-            Text(s.verdict(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
-            Text(s.explanation(), style = MaterialTheme.typography.bodySmall)
+    val cor = if (bloqueia) CgColor.Negative else CgColor.Positive
+
+    CgSurface(color = if (bloqueia) CgColor.NegativeDim else CgColor.PositiveDim) {
+        Column {
+            Text(text = s.verdict(), style = CgType.title, color = cor)
+            Spacer(Modifier.height(CgSpace.sm))
+            Text(text = s.explanation(), style = CgType.caption, color = CgColor.TextSecondary)
         }
     }
-    Spacer(Modifier.height(8.dp))
-    LinhaDeDado("Número normalizado", s.normalizedNumber ?: "não reconhecido")
-    LinhaDeDado("Procedência", s.origin.describe())
+
+    CgGap(CgSpace.lg)
+    CgDataRow("Número normalizado", s.normalizedNumber ?: "não reconhecido")
+    CgDataRow("Procedência", s.origin.describe())
+
     val marcas = buildList {
         if (s.isEmergency) add("emergência")
         if (s.isAllowlisted) add("sempre permitido")
@@ -351,87 +275,50 @@ private fun ResultadoDaSimulacao(s: NumberSimulation) {
         if (s.isSavedContact) add("contato salvo")
         if (s.hasCustomRule) add("tem regra própria")
     }
-    LinhaDeDado("Situação", marcas.joinToString(", ").ifEmpty { "número comum" })
+    CgDataRow("Situação", marcas.joinToString(", ").ifEmpty { "número comum" })
     s.appliedPolicy?.let {
-        LinhaDeDado("Regra aplicada", "${it.source.label} — ${it.describe()}")
+        CgDataRow("Regra aplicada", "${it.source.label} — ${it.describe()}")
     }
 }
 
 @Composable
-private fun ArmazenamentoCard(report: DiagnosticsReport) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text("O que está guardado aqui", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "Tudo isto fica no armazenamento privado do app, neste aparelho.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(12.dp))
-            val e = report.storage
-            LinhaDeDado("Tentativas registradas", "${e.attempts} (${e.distinctNumbers} números)")
-            LinhaDeDado("Números sempre permitidos", "${e.allowlist}")
-            LinhaDeDado("Números sempre bloqueados", "${e.blocklist}")
-            LinhaDeDado("Regras por número", "${e.customRules}")
-            LinhaDeDado("Chamadas bloqueadas", "${e.blockedCalls}")
-            LinhaDeDado("Decisões no registro", "${e.screeningEvents}")
-            LinhaDeDado("Versão do banco", "v${e.databaseVersion}")
+private fun Armazenamento(report: DiagnosticsReport) {
+    val e = report.storage
+    Column(Modifier.fillMaxWidth()) {
+        CgSectionHeader(
+            label = "O que está guardado aqui",
+            description = "Tudo isto fica no armazenamento privado do app, neste aparelho.",
+        )
+        CgDataRow("Tentativas registradas", "${e.attempts} (${e.distinctNumbers} números)")
+        CgDataRow("Números sempre permitidos", "${e.allowlist}")
+        CgDataRow("Números sempre bloqueados", "${e.blocklist}")
+        CgDataRow("Regras por número", "${e.customRules}")
+        CgDataRow("Chamadas bloqueadas", "${e.blockedCalls}")
+        CgDataRow("Decisões no registro", "${e.screeningEvents}")
+        CgDataRow("Versão do banco", "v${e.databaseVersion}")
+    }
+}
+
+@Composable
+private fun Backup(mensagem: String?, onExport: () -> Unit, onImport: () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        CgSectionHeader(
+            label = "Backup das regras",
+            description = "Salva ajustes, listas e regras num arquivo JSON legível, onde " +
+                "você escolher. O histórico de chamadas não vai junto.",
+        )
+        Row(Modifier.fillMaxWidth()) {
+            CgPrimaryButton(text = "Exportar", onClick = onExport, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(CgSpace.md))
+            CgSecondaryButton(text = "Importar", onClick = onImport, modifier = Modifier.weight(1f))
         }
-    }
-}
-
-@Composable
-private fun BackupCard(mensagem: String?, onExport: () -> Unit, onImport: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text("Backup das regras", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "Salva ajustes, listas e regras num arquivo JSON legível, escolhido por você. " +
-                    "O histórico de chamadas não vai junto — backup serve para recriar as " +
-                    "regras, não para levar embora quem ligou para você.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(12.dp))
-            Row {
-                Button(onClick = onExport) { Text("Exportar") }
-                Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = onImport) { Text("Importar") }
-            }
-            if (mensagem != null) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    mensagem,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        if (mensagem != null) {
+            CgGap(CgSpace.md)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CgTag(text = "backup", color = CgColor.TextTertiary, background = CgColor.Surface)
+                Spacer(Modifier.width(CgSpace.md))
+                Text(text = mensagem, style = CgType.caption, color = CgColor.TextSecondary)
             }
         }
-    }
-}
-
-@Composable
-private fun LinhaDeDado(rotulo: String, valor: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Text(
-            rotulo,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(12.dp))
-        Text(
-            valor,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.weight(1.2f),
-        )
     }
 }

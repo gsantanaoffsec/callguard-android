@@ -1,5 +1,11 @@
 package br.dev.callguard.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -9,42 +15,44 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import br.dev.callguard.core.CallPolicy
+import br.dev.callguard.core.PolicySource
 import br.dev.callguard.core.ProtectionSettings
 import br.dev.callguard.core.SchedulePolicy
+import br.dev.callguard.ui.design.CgCallout
+import br.dev.callguard.ui.design.CgChoiceChip
+import br.dev.callguard.ui.design.CgChoiceRow
+import br.dev.callguard.ui.design.CgColor
+import br.dev.callguard.ui.design.CgDialog
+import br.dev.callguard.ui.design.CgDivider
+import br.dev.callguard.ui.design.CgGap
+import br.dev.callguard.ui.design.CgIconButton
+import br.dev.callguard.ui.design.CgListItem
+import br.dev.callguard.ui.design.CgMotion
+import br.dev.callguard.ui.design.CgNotice
+import br.dev.callguard.ui.design.CgNoticeTone
+import br.dev.callguard.ui.design.CgScreen
+import br.dev.callguard.ui.design.CgSectionHeader
+import br.dev.callguard.ui.design.CgSpace
+import br.dev.callguard.ui.design.CgSwitchRow
+import br.dev.callguard.ui.design.CgTag
+import br.dev.callguard.ui.design.CgTextAction
+import br.dev.callguard.ui.design.CgTextField
+import br.dev.callguard.ui.design.CgType
 import java.time.DayOfWeek
 import java.util.concurrent.TimeUnit
 
@@ -58,13 +66,12 @@ private val DIAS = listOf(
 enum class RuleConflict { NONE, IN_ALLOWLIST, IN_BLOCKLIST, INVALID_NUMBER }
 
 /**
- * Regras que fogem da configuração geral: bloqueio permanente, limite por número e o
- * período noturno.
+ * Regras que fogem da configuração geral.
  *
- * A tela existe para tornar a hierarquia visível — quem lê de cima para baixo enxerga a
- * mesma ordem de precedência que o motor aplica.
+ * A tela abre com a ordem de precedência escrita como uma escada numerada — quem lê de
+ * cima para baixo enxerga a mesma hierarquia que o motor aplica. Depois vêm as três
+ * seções na mesma ordem em que elas vencem umas às outras.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun RulesScreen(
     uiState: CallGuardUiState,
@@ -78,102 +85,29 @@ fun RulesScreen(
     var dialogoBloqueio by remember { mutableStateOf(false) }
     var dialogoRegra by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = { TopAppBar(title = { Text("Regras") }) },
+    CgScreen(
+        title = "Regras",
+        subtitle = "Exceções que passam na frente da regra geral.",
         bottomBar = bottomBar,
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
-        ) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ),
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Ordem das regras", style = MaterialTheme.typography.titleSmall)
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = "Emergência → Lista de permitidos → Bloqueio permanente → " +
-                                "Contatos → Regra do número → Modo noturno → Regra geral.\n\n" +
-                                "A primeira que se aplicar decide. Emergência nunca é bloqueada.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
+    ) {
+        item("precedencia") { EscadaDePrecedencia() }
 
-            // ------------------------------------------------------------ blocklist
-            item {
-                SecaoRegras(
-                    titulo = "Bloqueio permanente",
-                    descricao = "Chamadas destes números são sempre recusadas, " +
-                        "independentemente de quantas vezes ligarem.",
-                    acao = "Bloquear um número",
-                    onAcao = { dialogoBloqueio = true },
-                )
-            }
-            items(uiState.blocklist, key = { "b-${it.normalizedNumber}" }) { item ->
-                LinhaRegra(
-                    titulo = item.label,
-                    subtitulo = item.normalizedNumber,
-                    detalhe = "Sempre bloqueado",
-                    onRemover = { onRemoveBlocklist(item.normalizedNumber) },
-                )
-            }
+        secaoBloqueio(uiState, onRemoveBlocklist) { dialogoBloqueio = true }
+        secaoRegrasPorNumero(uiState, onRemoveCustomRule) { dialogoRegra = true }
 
-            // -------------------------------------------------------- regras do número
-            item {
-                SecaoRegras(
-                    titulo = "Regra por número",
-                    descricao = "Limite próprio para um número, mais forte que a regra geral " +
-                        "e que o modo noturno.",
-                    acao = "Criar regra",
-                    onAcao = { dialogoRegra = true },
-                )
-            }
-            items(uiState.customRules, key = { "r-${it.normalizedNumber}" }) { regra ->
-                val politica = CallPolicy(
-                    regra.maxAllowedCalls,
-                    regra.windowMillis,
-                    br.dev.callguard.core.PolicySource.CUSTOM,
-                )
-                LinhaRegra(
-                    titulo = regra.label,
-                    subtitulo = regra.normalizedNumber,
-                    detalhe = if (regra.enabled) politica.describe() else "Desativada",
-                    onRemover = { onRemoveCustomRule(regra.normalizedNumber) },
-                )
-            }
-
-            // --------------------------------------------------------- modo noturno
-            item { BlocoModoNoturno(uiState.schedule, onScheduleChange) }
-
-            item { Spacer(Modifier.height(24.dp)) }
-        }
+        item("noturno") { ModoNoturno(uiState.schedule, onScheduleChange) }
     }
 
     if (dialogoBloqueio) {
-        DialogoNumero(
-            titulo = "Bloquear sempre",
-            explicacao = "Chamadas deste número serão recusadas automaticamente enquanto " +
-                "ele estiver aqui. Você pode remover a qualquer momento.",
+        DialogoBloqueio(
             onDismiss = { dialogoBloqueio = false },
-            onConfirmar = { numero, nome, forcar -> onAddBlocklist(numero, nome, forcar) },
+            onConfirmar = onAddBlocklist,
             onSucesso = { dialogoBloqueio = false },
         )
     }
 
     if (dialogoRegra) {
-        DialogoRegraPersonalizada(
+        DialogoRegraPorNumero(
             onDismiss = { dialogoRegra = false },
             onConfirmar = onAddCustomRule,
             onSucesso = { dialogoRegra = false },
@@ -181,183 +115,296 @@ fun RulesScreen(
     }
 }
 
+/**
+ * A ordem de precedência, desenhada.
+ *
+ * Antes era um parágrafo com setas dentro de um cartão cinza. Uma lista numerada com o
+ * número em monoespaçada é lida como o que é: uma sequência em que a primeira que casa
+ * decide.
+ */
 @Composable
-private fun SecaoRegras(
-    titulo: String,
-    descricao: String,
-    acao: String,
-    onAcao: () -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text(titulo, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                descricao,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            TextButton(onClick = onAcao, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(acao)
+private fun EscadaDePrecedencia() {
+    val niveis = listOf(
+        "Emergência" to "nunca bloqueada",
+        "Nunca bloquear" to "sua lista de permitidos",
+        "Bloqueio permanente" to "sua lista de bloqueados",
+        "Contatos salvos" to "conforme o ajuste da tela inicial",
+        "Regra do número" to "limite próprio",
+        "Modo noturno" to "dentro do horário",
+        "Regra geral" to "todo o resto",
+    )
+
+    Column(Modifier.fillMaxWidth()) {
+        CgSectionHeader(label = "Quem decide primeiro", top = true)
+        niveis.forEachIndexed { indice, (nome, detalhe) ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = CgSpace.sm),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "${indice + 1}",
+                    style = CgType.mono,
+                    color = CgColor.TextDisabled,
+                    modifier = Modifier.padding(end = CgSpace.lg),
+                )
+                Text(text = nome, style = CgType.body, color = CgColor.TextPrimary)
+                Spacer(Modifier.weight(1f))
+                Text(text = detalhe, style = CgType.caption, color = CgColor.TextTertiary)
             }
         }
+        CgGap(CgSpace.md)
+        Text(
+            text = "A primeira que se aplicar decide. Nada abaixo dela é consultado.",
+            style = CgType.caption,
+            color = CgColor.TextTertiary,
+        )
+    }
+}
+
+private fun LazyListScope.secaoBloqueio(
+    uiState: CallGuardUiState,
+    onRemover: (String) -> Unit,
+    onAdicionar: () -> Unit,
+) {
+    item("bloq-cabecalho") {
+        CgSectionHeader(
+            label = "Bloqueio permanente",
+            description = "Sempre recusados, não importa quantas vezes liguem.",
+        )
+    }
+    if (uiState.blocklist.isEmpty()) {
+        item("bloq-vazio") { LinhaVazia("Nenhum número bloqueado permanentemente.") }
+    } else {
+        items(
+            count = uiState.blocklist.size,
+            key = { i -> "b-${uiState.blocklist[i].normalizedNumber}" },
+        ) { indice ->
+            val item = uiState.blocklist[indice]
+            Column {
+                CgListItem(
+                    title = item.label,
+                    subtitle = item.normalizedNumber,
+                    trailing = {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            CgTag(
+                                text = "sempre",
+                                color = CgColor.Negative,
+                                background = CgColor.NegativeDim,
+                            )
+                            CgIconButton(
+                                icon = Icons.Default.Delete,
+                                contentDescription = "Remover ${item.label}",
+                                tint = CgColor.TextTertiary,
+                                onClick = { onRemover(item.normalizedNumber) },
+                            )
+                        }
+                    },
+                )
+                if (indice < uiState.blocklist.lastIndex) CgDivider()
+            }
+        }
+    }
+    item("bloq-add") {
+        CgTextAction(
+            text = "Bloquear um número",
+            icon = Icons.Default.Add,
+            onClick = onAdicionar,
+            modifier = Modifier.padding(top = CgSpace.sm),
+        )
+    }
+}
+
+private fun LazyListScope.secaoRegrasPorNumero(
+    uiState: CallGuardUiState,
+    onRemover: (String) -> Unit,
+    onAdicionar: () -> Unit,
+) {
+    item("regra-cabecalho") {
+        CgSectionHeader(
+            label = "Regra por número",
+            description = "Limite próprio, mais forte que o modo noturno e que a regra geral.",
+        )
+    }
+    if (uiState.customRules.isEmpty()) {
+        item("regra-vazio") { LinhaVazia("Nenhuma regra por número.") }
+    } else {
+        items(
+            count = uiState.customRules.size,
+            key = { i -> "r-${uiState.customRules[i].normalizedNumber}" },
+        ) { indice ->
+            val regra = uiState.customRules[indice]
+            val politica = CallPolicy(regra.maxAllowedCalls, regra.windowMillis, PolicySource.CUSTOM)
+            Column {
+                CgListItem(
+                    title = regra.label,
+                    subtitle = regra.normalizedNumber,
+                    meta = if (regra.enabled) politica.describe() else "Desativada",
+                    metaColor = if (regra.enabled) CgColor.TextSecondary else CgColor.TextDisabled,
+                    trailing = {
+                        CgIconButton(
+                            icon = Icons.Default.Delete,
+                            contentDescription = "Remover ${regra.label}",
+                            tint = CgColor.TextTertiary,
+                            onClick = { onRemover(regra.normalizedNumber) },
+                        )
+                    },
+                )
+                if (indice < uiState.customRules.lastIndex) CgDivider()
+            }
+        }
+    }
+    item("regra-add") {
+        CgTextAction(
+            text = "Criar regra",
+            icon = Icons.Default.Add,
+            onClick = onAdicionar,
+            modifier = Modifier.padding(top = CgSpace.sm),
+        )
     }
 }
 
 @Composable
-private fun LinhaRegra(
-    titulo: String,
-    subtitulo: String,
-    detalhe: String,
-    onRemover: () -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+private fun LinhaVazia(texto: String) {
+    Text(
+        text = texto,
+        style = CgType.caption,
+        color = CgColor.TextTertiary,
+        modifier = Modifier.padding(vertical = CgSpace.sm),
+    )
+}
+
+/**
+ * Modo noturno.
+ *
+ * Os ajustes só existem quando o modo está ligado, e entram com uma expansão curta em
+ * vez de aparecerem de uma vez — a animação explica que aquele bloco pertence ao
+ * interruptor de cima.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ModoNoturno(schedule: SchedulePolicy, onChange: (SchedulePolicy) -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        CgSectionHeader("Modo noturno")
+        CgSwitchRow(
+            title = "Regra mais rígida em um horário",
+            description = "Segue o relógio do aparelho. Não há serviço nem alarme por trás: " +
+                "quando a chamada chega, o app pergunta que horas são.",
+            checked = schedule.enabled,
+            onCheckedChange = { onChange(schedule.copy(enabled = it)) },
+        )
+
+        AnimatedVisibility(
+            visible = schedule.enabled,
+            enter = expandVertically(tween(CgMotion.slow, easing = CgMotion.standard)) +
+                fadeIn(tween(CgMotion.slow)),
+            exit = shrinkVertically(tween(CgMotion.normal, easing = CgMotion.standard)) +
+                fadeOut(tween(CgMotion.fast)),
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(titulo, style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    subtitulo,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    detalhe,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            IconButton(onClick = onRemover) {
-                Icon(Icons.Default.Delete, contentDescription = "Remover")
+            Column(Modifier.fillMaxWidth()) {
+                CgDivider()
+                CgGap(CgSpace.xl)
+
+                CampoDeAjuste("Começa às") {
+                    SeletorHora(schedule.startMinuteOfDay) {
+                        onChange(schedule.copy(startMinuteOfDay = it))
+                    }
+                }
+                CampoDeAjuste("Termina às") {
+                    SeletorHora(schedule.endMinuteOfDay) {
+                        onChange(schedule.copy(endMinuteOfDay = it))
+                    }
+                }
+
+                if (schedule.startMinuteOfDay > schedule.endMinuteOfDay) {
+                    CgNotice(
+                        text = "Atravessa a meia-noite. O dia escolhido é o do início do " +
+                            "período — a madrugada de terça pertence à segunda.",
+                        tone = CgNoticeTone.INFO,
+                    )
+                    CgGap(CgSpace.md)
+                }
+
+                CampoDeAjuste("Dias") {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(CgSpace.sm),
+                        verticalArrangement = Arrangement.spacedBy(CgSpace.sm),
+                    ) {
+                        DIAS.forEach { (dia, rotulo) ->
+                            CgChoiceChip(
+                                text = rotulo,
+                                selected = dia in schedule.activeDays,
+                                onClick = {
+                                    val novos = if (dia in schedule.activeDays) {
+                                        schedule.activeDays - dia
+                                    } else {
+                                        schedule.activeDays + dia
+                                    }
+                                    // Um período sem nenhum dia nunca valeria; recusamos
+                                    // em vez de deixar o usuário com um modo inerte.
+                                    if (novos.isNotEmpty()) {
+                                        onChange(schedule.copy(activeDays = novos))
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+
+                CampoDeAjuste("Chamadas permitidas no período") {
+                    CgChoiceRow(
+                        options = ProtectionSettings.MAX_CALL_OPTIONS,
+                        selected = schedule.maxAllowedCalls,
+                        label = { it.toString() },
+                        onSelected = { onChange(schedule.copy(maxAllowedCalls = it)) },
+                    )
+                }
+
+                CampoDeAjuste("Dentro de") {
+                    CgChoiceRow(
+                        options = ProtectionSettings.WINDOW_MINUTE_OPTIONS,
+                        selected = TimeUnit.MILLISECONDS.toMinutes(schedule.windowMillis).toInt(),
+                        label = { if (it >= 60) "${it / 60} h" else "$it min" },
+                        onSelected = {
+                            onChange(
+                                schedule.copy(windowMillis = TimeUnit.MINUTES.toMillis(it.toLong())),
+                            )
+                        },
+                    )
+                }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun BlocoModoNoturno(schedule: SchedulePolicy, onChange: (SchedulePolicy) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Modo noturno", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        "Regra mais rígida dentro de um horário. Segue o relógio do aparelho.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Switch(
-                    checked = schedule.enabled,
-                    onCheckedChange = { onChange(schedule.copy(enabled = it)) },
-                )
-            }
-
-            if (!schedule.enabled) return@Column
-
-            Spacer(Modifier.height(16.dp))
-            Text("Começa às", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(6.dp))
-            SeletorHora(schedule.startMinuteOfDay) { onChange(schedule.copy(startMinuteOfDay = it)) }
-
-            Spacer(Modifier.height(12.dp))
-            Text("Termina às", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(6.dp))
-            SeletorHora(schedule.endMinuteOfDay) { onChange(schedule.copy(endMinuteOfDay = it)) }
-
-            if (schedule.startMinuteOfDay > schedule.endMinuteOfDay) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Atravessa a meia-noite. O dia escolhido é o do início do período.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            Spacer(Modifier.height(16.dp))
-            Text("Dias", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(6.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                DIAS.forEach { (dia, rotulo) ->
-                    FilterChip(
-                        selected = dia in schedule.activeDays,
-                        onClick = {
-                            val novos = if (dia in schedule.activeDays) {
-                                schedule.activeDays - dia
-                            } else {
-                                schedule.activeDays + dia
-                            }
-                            if (novos.isNotEmpty()) onChange(schedule.copy(activeDays = novos))
-                        },
-                        label = { Text(rotulo, maxLines = 1) },
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "Máximo de chamadas no período",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-            )
-            Spacer(Modifier.height(6.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ProtectionSettings.MAX_CALL_OPTIONS.forEach { n ->
-                    FilterChip(
-                        selected = n == schedule.maxAllowedCalls,
-                        onClick = { onChange(schedule.copy(maxAllowedCalls = n)) },
-                        label = { Text("$n", maxLines = 1) },
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-            Text("Intervalo", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(6.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ProtectionSettings.WINDOW_MINUTE_OPTIONS.forEach { min ->
-                    FilterChip(
-                        selected = TimeUnit.MILLISECONDS.toMinutes(schedule.windowMillis).toInt() == min,
-                        onClick = {
-                            onChange(schedule.copy(windowMillis = TimeUnit.MINUTES.toMillis(min.toLong())))
-                        },
-                        label = { Text(if (min >= 60) "${min / 60} h" else "$min min", maxLines = 1) },
-                    )
-                }
-            }
-        }
+private fun CampoDeAjuste(rotulo: String, conteudo: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(bottom = CgSpace.xl)) {
+        Text(text = rotulo, style = CgType.subtitle, color = CgColor.TextPrimary)
+        Spacer(Modifier.height(CgSpace.md))
+        conteudo()
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SeletorHora(minutoDoDia: Int, onChange: (Int) -> Unit) {
     val horaAtual = minutoDoDia / 60
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(CgSpace.sm),
+        verticalArrangement = Arrangement.spacedBy(CgSpace.sm),
+    ) {
         (0..23).forEach { h ->
-            FilterChip(
+            CgChoiceChip(
+                text = "%02d".format(h),
                 selected = h == horaAtual,
                 onClick = { onChange(h * 60) },
-                label = { Text("%02d".format(h), maxLines = 1) },
             )
         }
     }
 }
 
 @Composable
-private fun DialogoNumero(
-    titulo: String,
-    explicacao: String,
+private fun DialogoBloqueio(
     onDismiss: () -> Unit,
     onConfirmar: (numero: String, nome: String, forcar: Boolean) -> RuleConflict,
     onSucesso: () -> Unit,
@@ -366,122 +413,112 @@ private fun DialogoNumero(
     var nome by remember { mutableStateOf("") }
     var conflito by remember { mutableStateOf(RuleConflict.NONE) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(titulo) },
-        text = {
-            Column {
-                Text(explicacao, style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(12.dp))
-                CampoNumero(numero, { numero = it; conflito = RuleConflict.NONE }, nome) { nome = it }
-                AvisoConflito(conflito)
-            }
+    CgDialog(
+        title = "Bloquear sempre",
+        description = "Chamadas deste número serão recusadas enquanto ele estiver aqui. " +
+            "Você pode remover a qualquer momento.",
+        onDismiss = onDismiss,
+        confirmText = if (conflito == RuleConflict.IN_ALLOWLIST) "Remover e bloquear" else "Bloquear",
+        confirmEnabled = numero.isNotBlank(),
+        destructive = true,
+        onConfirm = {
+            val forcar = conflito != RuleConflict.NONE
+            conflito = onConfirmar(numero, nome, forcar)
+            if (conflito == RuleConflict.NONE) onSucesso()
         },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val forcar = conflito != RuleConflict.NONE
-                    conflito = onConfirmar(numero, nome, forcar)
-                    if (conflito == RuleConflict.NONE) onSucesso()
-                },
-                enabled = numero.isNotBlank(),
-            ) {
-                Text(if (conflito == RuleConflict.IN_ALLOWLIST) "Remover e bloquear" else "Confirmar")
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
-    )
+    ) {
+        Column {
+            CamposDeNumero(
+                numero = numero,
+                onNumero = { numero = it; conflito = RuleConflict.NONE },
+                nome = nome,
+                onNome = { nome = it },
+            )
+            AvisoConflito(conflito)
+        }
+    }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun DialogoRegraPersonalizada(
+private fun DialogoRegraPorNumero(
     onDismiss: () -> Unit,
     onConfirmar: (raw: String, label: String, max: Int, windowMinutes: Int, force: Boolean) -> RuleConflict,
     onSucesso: () -> Unit,
 ) {
     var numero by remember { mutableStateOf("") }
     var nome by remember { mutableStateOf("") }
-    var maximo by remember { mutableStateOf(1) }
-    var janela by remember { mutableStateOf(10) }
+    var maximo by remember { mutableIntStateOf(1) }
+    var janela by remember { mutableIntStateOf(10) }
     var conflito by remember { mutableStateOf(RuleConflict.NONE) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Regra por número") },
-        text = {
-            Column {
-                CampoNumero(numero, { numero = it; conflito = RuleConflict.NONE }, nome) { nome = it }
-                Spacer(Modifier.height(12.dp))
-                Text("Máximo de chamadas", style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(4.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ProtectionSettings.MAX_CALL_OPTIONS.forEach { n ->
-                        FilterChip(
-                            selected = n == maximo,
-                            onClick = { maximo = n },
-                            label = { Text("$n", maxLines = 1) },
-                        )
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                Text("Intervalo", style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(4.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ProtectionSettings.WINDOW_MINUTE_OPTIONS.forEach { m ->
-                        FilterChip(
-                            selected = m == janela,
-                            onClick = { janela = m },
-                            label = { Text(if (m >= 60) "${m / 60}h" else "${m}m", maxLines = 1) },
-                        )
-                    }
-                }
-                AvisoConflito(conflito)
-            }
+    CgDialog(
+        title = "Regra por número",
+        description = "Um limite só para este número, que passa na frente do modo noturno " +
+            "e da regra geral.",
+        onDismiss = onDismiss,
+        confirmText = if (conflito == RuleConflict.NONE) "Criar regra" else "Remover e criar",
+        confirmEnabled = numero.isNotBlank(),
+        onConfirm = {
+            val forcar = conflito != RuleConflict.NONE
+            conflito = onConfirmar(numero, nome, maximo, janela, forcar)
+            if (conflito == RuleConflict.NONE) onSucesso()
         },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val forcar = conflito != RuleConflict.NONE
-                    conflito = onConfirmar(numero, nome, maximo, janela, forcar)
-                    if (conflito == RuleConflict.NONE) onSucesso()
-                },
-                enabled = numero.isNotBlank(),
-            ) {
-                Text(if (conflito == RuleConflict.NONE) "Criar" else "Remover e criar")
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
-    )
+    ) {
+        Column {
+            CamposDeNumero(
+                numero = numero,
+                onNumero = { numero = it; conflito = RuleConflict.NONE },
+                nome = nome,
+                onNome = { nome = it },
+            )
+            CgGap(CgSpace.xl)
+            Text("Chamadas permitidas", style = CgType.caption, color = CgColor.TextSecondary)
+            CgGap(CgSpace.sm)
+            CgChoiceRow(
+                options = ProtectionSettings.MAX_CALL_OPTIONS,
+                selected = maximo,
+                label = { it.toString() },
+                onSelected = { maximo = it },
+            )
+            CgGap(CgSpace.lg)
+            Text("Dentro de", style = CgType.caption, color = CgColor.TextSecondary)
+            CgGap(CgSpace.sm)
+            CgChoiceRow(
+                options = ProtectionSettings.WINDOW_MINUTE_OPTIONS,
+                selected = janela,
+                label = { if (it >= 60) "${it / 60} h" else "$it min" },
+                onSelected = { janela = it },
+            )
+            AvisoConflito(conflito)
+        }
+    }
 }
 
 @Composable
-private fun CampoNumero(
+private fun CamposDeNumero(
     numero: String,
     onNumero: (String) -> Unit,
     nome: String,
     onNome: (String) -> Unit,
 ) {
-    OutlinedTextField(
+    CgTextField(
         value = numero,
         onValueChange = onNumero,
-        label = { Text("Telefone") },
-        placeholder = { Text("(11) 99999-8888") },
-        singleLine = true,
+        label = "Telefone",
+        placeholder = "(11) 99999-8888",
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
     )
-    Spacer(Modifier.height(8.dp))
-    OutlinedTextField(
+    Spacer(Modifier.height(CgSpace.md))
+    CgTextField(
         value = nome,
         onValueChange = onNome,
-        label = { Text("Nome (opcional)") },
-        singleLine = true,
+        label = "Nome (opcional)",
     )
 }
 
 /**
- * Conflitos nunca são resolvidos em silêncio: a tela diz o que existe e exige um
- * segundo toque para trocar uma exceção por outra.
+ * Conflitos nunca são resolvidos em silêncio: a tela diz o que existe e exige um segundo
+ * toque para trocar uma exceção por outra.
  */
 @Composable
 private fun AvisoConflito(conflito: RuleConflict) {
@@ -489,21 +526,13 @@ private fun AvisoConflito(conflito: RuleConflict) {
         RuleConflict.NONE -> return
         RuleConflict.INVALID_NUMBER -> "Número inválido."
         RuleConflict.IN_ALLOWLIST ->
-            "Este número está na lista de permitidos e hoje nunca é bloqueado. " +
-                "Confirme de novo para removê-lo de lá."
+            "Este número está na lista de permitidos e hoje nunca é bloqueado. Confirme de " +
+                "novo para removê-lo de lá."
+
         RuleConflict.IN_BLOCKLIST ->
-            "Este número está bloqueado permanentemente. " +
-                "Confirme de novo para remover o bloqueio e usar a regra."
+            "Este número está bloqueado permanentemente. Confirme de novo para remover o " +
+                "bloqueio e usar a regra."
     }
-    Spacer(Modifier.height(12.dp))
-    Row {
-        Icon(
-            Icons.Default.Warning,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.error,
-            modifier = Modifier.size(18.dp),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(texto, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-    }
+    CgGap(CgSpace.md)
+    CgCallout(text = texto, color = CgColor.Warning, background = CgColor.WarningDim)
 }

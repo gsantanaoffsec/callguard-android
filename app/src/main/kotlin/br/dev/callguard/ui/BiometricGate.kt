@@ -4,19 +4,24 @@ import android.content.Context
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators
 import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import br.dev.callguard.ui.design.CgColor
+import br.dev.callguard.ui.design.CgPrimaryButton
+import br.dev.callguard.ui.design.CgSpace
+import br.dev.callguard.ui.design.CgType
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -109,41 +114,61 @@ object BiometricSupport {
     }
 }
 
-/** Tela mostrada enquanto o app esta trancado. */
+/**
+ * Tela mostrada enquanto o app está trancado.
+ *
+ * Composição deliberadamente pobre: um cadeado pequeno, o nome do app, uma frase e uma
+ * ação na base, onde o polegar alcança. Nada mais tem função aqui, e qualquer coisa a
+ * mais atrasaria quem só quer entrar.
+ */
 @Composable
 fun LockedScreen(
     mensagemDeErro: String?,
     onUnlock: () -> Unit,
 ) {
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CgColor.Background),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp),
+                .padding(CgSpace.section),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Icon(
-                imageVector = Icons.Default.Lock,
+                imageVector = Icons.Outlined.Lock,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = CgColor.TextTertiary,
+                modifier = Modifier.size(28.dp),
             )
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(CgSpace.xxl))
             Text(
                 text = "CallGuard está bloqueado",
-                style = MaterialTheme.typography.titleLarge,
+                style = CgType.title,
+                color = CgColor.TextPrimary,
                 textAlign = TextAlign.Center,
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(CgSpace.md))
             Text(
                 text = mensagemDeErro
                     ?: "Use a biometria ou a senha do aparelho para continuar.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = CgType.caption,
+                color = CgColor.TextSecondary,
                 textAlign = TextAlign.Center,
             )
-            Spacer(Modifier.height(24.dp))
-            Button(onClick = onUnlock) { Text("Desbloquear") }
         }
+
+        CgPrimaryButton(
+            text = "Desbloquear",
+            onClick = onUnlock,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = CgSpace.lg)
+                .padding(bottom = CgSpace.section),
+        )
     }
 }

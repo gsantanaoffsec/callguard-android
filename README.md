@@ -204,6 +204,7 @@ Cinco camadas, sem cerimônia inútil:
 | `RulesScreen` | Bloqueio permanente, regras por número e modo noturno, com confirmação em cada conflito. |
 | `DiagnosticsScreen` | Laudo, teste de número, contagens da base e backup. |
 | `SplashScreen` | Abertura desenhada em `Canvas`, sem imagem nem biblioteca de animação. |
+| `ui/design/` | O design system: tokens, tipografia e componentes. Nenhuma tela define cor, espaçamento ou forma por conta própria. |
 | `CallGuardViewModel` | Estado da UI; reconsulta papel/permissão a cada `ON_RESUME`. |
 
 ---
@@ -325,6 +326,13 @@ callguard-android/
         │   │   │   ├── BlockedCallNotifier.kt
         │   │   │   └── CallScreeningRoleController.kt
         │   │   └── ui/
+        │   │       ├── design/                 ← DESIGN SYSTEM
+        │   │       │   ├── Tokens.kt            (cor, espaço, forma, tempo)
+        │   │       │   ├── Type.kt
+        │   │       │   ├── Foundation.kt
+        │   │       │   ├── Controls.kt
+        │   │       │   ├── ListItems.kt
+        │   │       │   └── Dialog.kt
         │   │       ├── MainActivity.kt
         │   │       ├── CallGuardViewModel.kt
         │   │       ├── UiState.kt
@@ -895,12 +903,93 @@ contorno do escudo ficam num cache reconstruído só quando o tamanho da tela mu
 esses objetos a cada quadro geraria lixo suficiente para o coletor causar engasgo
 visível.
 
+Esta tela é a única que não passou pelo design system da seção 19: ela é desenhada em
+`Canvas` com a própria paleta, que por construção já é o mesmo preto e branco. Mexer nela
+durante o redesenho da interface interna só criaria risco sem mudar um pixel.
+
 Nota: não é possível animar a tela do **instalador** do Android. Esta é a abertura do
 próprio app.
 
 ---
 
-## 19. Instalação
+## 19. Design system
+
+A interface foi refeita sobre um sistema visual próprio. A motivação foi concreta: a
+versão anterior usava `dynamicDarkColorScheme`, então o app assumia a cor do papel de
+parede do usuário, e todo agrupamento era feito com `Card` — um cartão por seção, um por
+item de lista, um por linha. O resultado tinha a aparência de um formulário do Android,
+não a de um produto.
+
+**Onde mora:** `ui/design/`. Quatro arquivos, um papel cada.
+
+| Arquivo | O que define |
+|---|---|
+| `Tokens.kt` | `CgColor`, `CgSpace`, `CgShape`, `CgSize`, `CgMotion` |
+| `Type.kt` | `CgType` — sete estilos nomeados, mais o mapeamento para os slots do Material |
+| `Foundation.kt` | casca de tela, cabeçalho de seção, divisor, aviso, estado vazio, métrica, bloco de estado |
+| `Controls.kt` | botões, interruptor, chips de escolha, campo de texto |
+| `ListItems.kt` | item de lista, linha de navegação, par rótulo/valor, etiqueta |
+| `Dialog.kt` | diálogo e caixa de destaque |
+
+### As decisões que mudam a aparência
+
+**Sem cor dinâmica e sem tema claro.** A identidade é fixa. `MaterialTheme.colorScheme`
+continua definido, mas apenas para que qualquer componente do framework que sobre caia na
+paleta certa — a fonte de verdade é `CgColor`.
+
+**Preto de verdade** (`#000000`) como fundo, e superfícies acima dele usadas com
+parcimônia (`#0E0E0E`, `#161616`, `#1F1F1F`). Quando tudo vira cartão cinza, o preto
+deixa de ser protagonista e a tela volta a parecer template.
+
+**Cartões substituídos por seções.** Um rótulo em caixa alta sobre o fundo, itens
+diretamente sobre ele, e um traço de 1 dp entre as linhas. Faz o mesmo trabalho de
+separação que a moldura fazia, gastando um terço da altura e sem criar uma borda a cada
+60 dp de rolagem.
+
+**O título vive no conteúdo, não numa `TopAppBar`.** Ele é grande (30 sp, bold) e rola
+junto. A barra superior ficou reduzida a uma faixa fina que só existe quando há voltar ou
+ações.
+
+**Tipografia carregando a hierarquia.** Sete estilos, não os quinze slots do Material.
+`letterSpacing` negativo nos tamanhos grandes e positivo nos pequenos — títulos grandes
+com o espaçamento padrão parecem soltos, e rótulos pequenos em caixa alta ficam
+ilegíveis sem respiro. Números de telefone em monoespaçada, para que colunas de dígitos
+fiquem alinhadas na vertical e a lista seja escaneável.
+
+**Controles desenhados à mão.** O `Switch` do Material sinaliza o estado ligado com a cor
+primária e um ícone de confirmação dentro do polegar; o `FilterChip` traz um contêiner
+tingido; o `NavigationBar` desenha uma cápsula atrás do ícone ativo. Todos foram
+substituídos. No sistema novo, "isto está ativo" tem um vocabulário só: **inversão de
+contraste** — fundo branco, conteúdo preto. É o mesmo do botão primário, do chip
+selecionado e do interruptor ligado.
+
+**Cor apenas onde significa.** Verde, vermelho e amarelo existem, dessaturados, e
+aparecem em pontos de 8 dp, em barras de 2 dp e em etiquetas pequenas — nunca em blocos
+preenchidos. Uma tela de histórico com blocos coloridos vira um carnaval em que nada se
+destaca.
+
+**Nenhum estado depende só de cor.** O interruptor muda de posição e de preenchimento; a
+aba ativa ganha um traço acima; a verificação do diagnóstico tem o texto do detalhe
+dizendo o que a cor diz.
+
+### Movimento
+
+Curto e sem elasticidade: 120 ms para chips, 200 ms para interruptores e abas, 320 ms
+para a expansão do modo noturno. A única animação contínua é o ponto do estado de
+proteção, e ela existe porque "ativo" é um estado vivo — parado, seria indistinguível de
+um ícone.
+
+### Acessibilidade
+
+O minimalismo não é desculpa. Interruptores usam `toggleable` e chips usam `selectable`,
+que carregam o estado para o leitor de tela (um `clickable` com `Role.Switch` anuncia o
+controle mas não diz como ele está). Todos os alvos de toque têm no mínimo 48 dp, e as
+alturas de botão, chip e barra de abas são **mínimas** e não fixas — com a fonte do
+sistema ampliada, uma altura fixa cortaria o rótulo.
+
+---
+
+## 20. Instalação
 
 ### Abrir no Android Studio
 
@@ -963,7 +1052,7 @@ proteção contra spam → CallGuard**.
 
 ---
 
-## 20. Teste real com outro telefone
+## 21. Teste real com outro telefone
 
 Configure primeiro, para não esperar muito:
 
@@ -1009,7 +1098,7 @@ I CallGuardScreening: Screening decidiu: BLOCK(PERMANENT_BLOCKLIST, tentativas=0
 
 ---
 
-## 21. Troubleshooting Samsung
+## 22. Troubleshooting Samsung
 
 ### O serviço não recebe chamada nenhuma
 
@@ -1077,7 +1166,7 @@ de bateria (acima) reduz bastante o efeito.
 
 ---
 
-## 22. Estado verificado da build
+## 23. Estado verificado da build
 
 Compilado e testado nesta máquina antes da entrega:
 
@@ -1104,7 +1193,7 @@ BUILD SUCCESSFUL
 | `ProtectionSettingsTest` | 3 | 0 |
 | **Total** | **100** | **0** |
 
-APK release: **3,6 MB** com R8 (`CallGuard-2.1.0.apk`, versionCode 7). O APK debug fica
+APK release: **3,6 MB** com R8 (`CallGuard-2.2.0.apk`, versionCode 8). O APK debug fica
 em ~31 MB por carregar ferramental de desenvolvimento — serve para depurar, não para
 distribuir.
 
@@ -1148,6 +1237,6 @@ abertura em 120 Hz. As seções 20 e 21 existem exatamente para isso.
 
 ---
 
-## 23. Licença e escopo
+## 24. Licença e escopo
 
 Uso pessoal. Todos os dados ficam no aparelho; nada é enviado para lugar nenhum.

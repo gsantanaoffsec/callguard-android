@@ -1,53 +1,59 @@
 package br.dev.callguard.ui
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import br.dev.callguard.core.ProtectionSettings
+import br.dev.callguard.ui.design.CgChoiceRow
+import br.dev.callguard.ui.design.CgColor
+import br.dev.callguard.ui.design.CgDialog
+import br.dev.callguard.ui.design.CgDivider
+import br.dev.callguard.ui.design.CgGap
+import br.dev.callguard.ui.design.CgIconButton
+import br.dev.callguard.ui.design.CgListItem
+import br.dev.callguard.ui.design.CgMetric
+import br.dev.callguard.ui.design.CgNavRow
+import br.dev.callguard.ui.design.CgNotice
+import br.dev.callguard.ui.design.CgNoticeTone
+import br.dev.callguard.ui.design.CgPrimaryButton
+import br.dev.callguard.ui.design.CgScreen
+import br.dev.callguard.ui.design.CgSectionHeader
+import br.dev.callguard.ui.design.CgSpace
+import br.dev.callguard.ui.design.CgStatusBlock
+import br.dev.callguard.ui.design.CgSwitchRow
+import br.dev.callguard.ui.design.CgTextAction
+import br.dev.callguard.ui.design.CgTextField
+import br.dev.callguard.ui.design.CgType
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Tela inicial.
+ *
+ * A composição é a de um painel, não a de um formulário: o estado da proteção ocupa o
+ * topo em tipografia grande, os números vêm logo abaixo sem moldura, e todo o resto é
+ * lido como uma lista de ajustes agrupados por assunto.
+ *
+ * Nenhum cartão. Os grupos são separados por um rótulo em caixa alta e por espaço; as
+ * linhas, por um traço de 1 dp. Era isso que os cartões faziam antes, gastando três
+ * vezes mais altura e uma borda a cada item.
+ */
 @Composable
 fun HomeScreen(
     uiState: CallGuardUiState,
@@ -65,479 +71,377 @@ fun HomeScreen(
     biometricAvailability: BiometricAvailability,
     bottomBar: @Composable () -> Unit,
 ) {
-    var showAddDialog by remember { mutableStateOf(false) }
+    var mostrarDialogo by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(title = { Text("Proteção contra chamadas insistentes") })
-        },
-        bottomBar = bottomBar,
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
-        ) {
-            item { StatusCard(uiState = uiState, onRequestRole = onRequestRole) }
+    CgScreen(title = "CallGuard", bottomBar = bottomBar) {
+        item("status") { BlocoDeEstado(uiState, onRequestRole) }
 
-            item {
-                SectionCard(title = "Proteção automática") {
-                    SwitchRow(
-                        title = "Bloquear chamadas insistentes",
-                        subtitle = "Rejeita automaticamente quem passa do limite dentro da janela.",
-                        checked = uiState.settings.protectionEnabled,
-                        onCheckedChange = onProtectionChange,
-                    )
-                }
-            }
+        item("numeros") { FaixaDeNumeros(uiState) }
 
-            item {
-                SectionCard(title = "Regra") {
-                    Text(
-                        text = "Número máximo de chamadas permitidas",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Com ${uiState.settings.maxAllowedCalls}, a chamada de número " +
-                            "${uiState.settings.maxAllowedCalls + 1} dentro da janela é rejeitada.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    ChipRow(
-                        options = ProtectionSettings.MAX_CALL_OPTIONS,
-                        selected = uiState.settings.maxAllowedCalls,
-                        label = { it.toString() },
-                        onSelected = onMaxCallsChange,
-                    )
+        secaoRegra(uiState, onMaxCallsChange, onWindowMinutesChange)
 
-                    Spacer(Modifier.height(16.dp))
-
-                    Text(
-                        text = "Intervalo de tempo",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Janela deslizante: contam apenas as chamadas dos últimos " +
-                            "${uiState.settings.windowMinutes} minutos.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    ChipRow(
-                        options = ProtectionSettings.WINDOW_MINUTE_OPTIONS,
-                        selected = uiState.settings.windowMinutes,
-                        label = { if (it >= 60) "${it / 60} h" else "$it min" },
-                        onSelected = onWindowMinutesChange,
-                    )
-                }
-            }
-
-            item {
-                SectionCard(title = "Contatos") {
-                    SwitchRow(
-                        title = "Aplicar a regra também aos contatos salvos",
-                        subtitle = if (uiState.settings.applyToContacts) {
-                            "Precisa da permissão de contatos: sem ela o Android nem entrega " +
-                                "chamadas de contatos ao aplicativo."
-                        } else {
-                            "Desligado, contatos salvos nunca são bloqueados — o próprio " +
-                                "Android não envia essas chamadas para o app."
-                        },
-                        checked = uiState.settings.applyToContacts,
-                        onCheckedChange = onApplyToContactsChange,
-                    )
-                    if (uiState.contactsModeNeedsPermission) {
-                        Spacer(Modifier.height(8.dp))
-                        WarningLine(
-                            "Permissão de contatos não concedida. Enquanto isso, contatos " +
-                                "salvos continuam passando.",
-                        )
-                    }
-                }
-            }
-
-            item {
-                SectionCard(title = "Avisos") {
-                    SwitchRow(
-                        title = "Avisar quando bloquear",
-                        subtitle = "Notificação silenciosa, sem som e sem vibração. Sem ela " +
-                            "você só descobre um bloqueio abrindo o app.",
-                        checked = uiState.settings.notifyOnBlock,
-                        onCheckedChange = onNotifyOnBlockChange,
-                    )
-                    if (uiState.notificationsNeedPermission) {
-                        Spacer(Modifier.height(8.dp))
-                        WarningLine(
-                            "Permissão de notificações não concedida. Os bloqueios vão " +
-                                "acontecer sem aviso.",
-                        )
-                    }
-                }
-            }
-
-            item {
-                SectionCard(title = "Lista de exceções") {
-                    Text(
-                        text = "Números que nunca serão bloqueados, não importa quantas vezes " +
-                            "liguem. Fica apenas neste aparelho.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Adicionar número")
-                    }
-                }
-            }
-
-            if (uiState.allowlist.isNotEmpty()) {
-                items(uiState.allowlist, key = { it.normalizedNumber }) { entry ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(entry.label, style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    entry.normalizedNumber,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            IconButton(onClick = { onRemoveAllowlistEntry(entry.normalizedNumber) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Remover")
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                SectionCard(title = "Segurança") {
-                    SwitchRow(
-                        title = "Exigir biometria para abrir",
-                        subtitle = "Pede sua digital ou a senha do aparelho toda vez que o " +
-                            "app volta para a frente. Protege o histórico de quem pega o " +
-                            "celular já destravado.",
-                        checked = uiState.settings.biometricLockEnabled,
-                        onCheckedChange = onBiometricLockChange,
-                        enabled = biometricAvailability == BiometricAvailability.AVAILABLE ||
-                            uiState.settings.biometricLockEnabled,
-                    )
-                    when (biometricAvailability) {
-                        BiometricAvailability.NONE_ENROLLED -> {
-                            Spacer(Modifier.height(8.dp))
-                            WarningLine(
-                                "Este aparelho ainda não tem digital, rosto ou senha de tela " +
-                                    "cadastrados. Configure um bloqueio de tela para usar isto.",
-                            )
-                        }
-
-                        BiometricAvailability.UNSUPPORTED -> {
-                            Spacer(Modifier.height(8.dp))
-                            WarningLine(
-                                "Este aparelho não oferece biometria nem bloqueio de tela.",
-                            )
-                        }
-
-                        BiometricAvailability.AVAILABLE -> Unit
-                    }
-                }
-            }
-
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onOpenDiagnostics,
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                "Diagnóstico e backup",
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Text(
-                                "Ver se a proteção está mesmo funcionando, testar um número " +
-                                    "e salvar suas regras.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
-                    }
-                }
-            }
-
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onOpenBlockedCalls,
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                "Chamadas bloqueadas",
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Text(
-                                "${uiState.blockedCallsTotal} no total",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
-                    }
-                }
-            }
-
-            item { Spacer(Modifier.height(24.dp)) }
-        }
-    }
-
-    if (showAddDialog) {
-        AddAllowlistDialog(
-            onDismiss = { showAddDialog = false },
-            onConfirm = { number, label ->
-                val added = onAddAllowlistEntry(number, label)
-                if (added) showAddDialog = false
-                added
-            },
+        secaoComportamento(
+            uiState = uiState,
+            onProtectionChange = onProtectionChange,
+            onApplyToContactsChange = onApplyToContactsChange,
+            onNotifyOnBlockChange = onNotifyOnBlockChange,
         )
-    }
-}
 
-@Composable
-private fun StatusCard(uiState: CallGuardUiState, onRequestRole: () -> Unit) {
-    val protecting = uiState.isActuallyProtecting
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (protecting) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.errorContainer
-            },
-        ),
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = if (protecting) Icons.Default.CheckCircle else Icons.Default.Warning,
-                    contentDescription = null,
-                    modifier = Modifier.size(28.dp),
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = if (protecting) "Proteção ativa" else "Proteção inativa",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
+        secaoPermitidos(
+            uiState = uiState,
+            onAdicionar = { mostrarDialogo = true },
+            onRemover = onRemoveAllowlistEntry,
+        )
 
-            when {
-                !uiState.roleAvailable -> Text(
-                    "Este aparelho não oferece a função de filtragem de chamadas para " +
-                        "aplicativos de terceiros.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+        secaoPrivacidade(uiState, biometricAvailability, onBiometricLockChange)
 
-                !uiState.roleHeld -> {
-                    Text(
-                        "Para poder recusar chamadas antes que o telefone toque, o Android " +
-                            "exige que este aplicativo seja o serviço de identificação e " +
-                            "filtragem de chamadas. Essa autorização só pode ser dada por " +
-                            "você, na tela do sistema.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = onRequestRole) {
-                        Text("Definir como app de filtragem de chamadas")
-                    }
-                }
-
-                !uiState.settings.protectionEnabled -> Text(
-                    "Autorização concedida, mas o bloqueio de chamadas insistentes está " +
-                        "desligado abaixo.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-
-                else -> Text(
-                    "A partir da chamada ${uiState.settings.maxAllowedCalls + 1} do mesmo " +
-                        "número em ${uiState.settings.windowMinutes} minutos, a ligação é " +
-                        "recusada automaticamente.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SectionCard(title: String, content: @Composable () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(12.dp))
-            content()
-        }
-    }
-}
-
-@Composable
-private fun SwitchRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    enabled: Boolean = true,
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.height(2.dp))
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        item("mais-cabecalho") { CgSectionHeader("Mais") }
+        item("mais-bloqueadas") {
+            CgNavRow(
+                title = "Chamadas bloqueadas",
+                subtitle = "Histórico do que foi recusado",
+                value = uiState.blockedCallsTotal.toString(),
+                onClick = onOpenBlockedCalls,
             )
         }
-        Spacer(Modifier.width(12.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        item("mais-divisor") { CgDivider() }
+        item("mais-diagnostico") {
+            CgNavRow(
+                title = "Diagnóstico e backup",
+                subtitle = "Conferir se está funcionando, testar um número, salvar as regras",
+                onClick = onOpenDiagnostics,
+            )
+        }
+    }
+
+    if (mostrarDialogo) {
+        DialogoAdicionarPermitido(
+            onDismiss = { mostrarDialogo = false },
+            onConfirmar = { numero, nome ->
+                val adicionado = onAddAllowlistEntry(numero, nome)
+                if (adicionado) mostrarDialogo = false
+                adicionado
+            },
+        )
     }
 }
 
 /**
- * Linha de opcoes que quebra para a linha de baixo quando nao cabe.
+ * O herói da tela.
  *
- * Com `Row` simples os cinco chips de intervalo nao cabiam na largura da tela: o ultimo
- * era espremido na horizontal, o texto quebrava em duas linhas e o botao ficava mais alto
- * que os outros. `FlowRow` passa o excedente para a proxima linha e todos mantem a mesma
- * altura.
+ * Duas linhas grandes dizendo o que está acontecendo, e uma linha de apoio dizendo por
+ * quê. Quando falta a autorização do sistema, a ação de corrigir aparece aqui mesmo —
+ * é o único lugar em que ela é urgente.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun <T> ChipRow(
-    options: List<T>,
-    selected: T,
-    label: (T) -> String,
-    onSelected: (T) -> Unit,
-) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        options.forEach { option ->
-            FilterChip(
-                selected = option == selected,
-                onClick = { onSelected(option) },
-                label = { Text(label(option), maxLines = 1) },
+private fun BlocoDeEstado(uiState: CallGuardUiState, onRequestRole: () -> Unit) {
+    val protegendo = uiState.isActuallyProtecting
+
+    val (manchete, apoio) = when {
+        !uiState.roleAvailable ->
+            "Este aparelho não filtra chamadas." to
+                "O Android deste modelo não oferece a função de filtragem para aplicativos " +
+                "de terceiros."
+
+        !uiState.roleHeld ->
+            "Falta a sua autorização." to
+                "Para recusar uma chamada antes de o telefone tocar, o Android exige que o " +
+                "CallGuard seja o app de filtragem. Só você pode conceder isso."
+
+        !uiState.settings.protectionEnabled ->
+            "A proteção está desligada." to
+                "A autorização foi concedida, mas nenhuma chamada é recusada enquanto o " +
+                "interruptor abaixo estiver desligado."
+
+        else ->
+            "Chamadas insistentes são recusadas." to
+                "A partir da ${uiState.settings.maxAllowedCalls + 1}ª ligação do mesmo " +
+                "número em ${uiState.settings.windowMinutes} minutos, sem o telefone tocar."
+    }
+
+    Column(Modifier.fillMaxWidth()) {
+        CgStatusBlock(active = protegendo, headline = manchete, supporting = apoio)
+
+        if (uiState.roleAvailable && !uiState.roleHeld) {
+            CgGap(CgSpace.xxl)
+            CgPrimaryButton(
+                text = "Definir como filtro de chamadas",
+                onClick = onRequestRole,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
 }
 
+/**
+ * Faixa de números.
+ *
+ * O que antes era um cartão dizendo "12 no total" virou o próprio 12. Três dados que
+ * cabem numa olhada, separados por espaço em vez de por bordas.
+ */
 @Composable
-private fun WarningLine(text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            Icons.Default.Warning,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.error,
-            modifier = Modifier.size(18.dp),
+private fun FaixaDeNumeros(uiState: CallGuardUiState) {
+    Column(Modifier.fillMaxWidth().padding(top = CgSpace.section)) {
+        CgDivider()
+        Row(Modifier.fillMaxWidth().padding(vertical = CgSpace.xl)) {
+            CgMetric(
+                value = uiState.blockedCallsTotal.toString(),
+                label = "Bloqueadas",
+                valueStyle = CgType.headline,
+                modifier = Modifier.weight(1f),
+            )
+            CgMetric(
+                value = uiState.settings.maxAllowedCalls.toString(),
+                label = "Limite",
+                valueStyle = CgType.headline,
+                modifier = Modifier.weight(1f),
+            )
+            CgMetric(
+                value = if (uiState.settings.windowMinutes >= 60) {
+                    "${uiState.settings.windowMinutes / 60}h"
+                } else {
+                    "${uiState.settings.windowMinutes}m"
+                },
+                label = "Janela",
+                valueStyle = CgType.headline,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        CgDivider()
+    }
+}
+
+private fun LazyListScope.secaoRegra(
+    uiState: CallGuardUiState,
+    onMaxCallsChange: (Int) -> Unit,
+    onWindowMinutesChange: (Int) -> Unit,
+) {
+    item("regra-cabecalho") {
+        CgSectionHeader(
+            label = "Regra geral",
+            description = "Vale para todo número que não tenha regra própria.",
         )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
+    }
+    item("regra-max") {
+        Column(Modifier.fillMaxWidth().padding(bottom = CgSpace.xl)) {
+            Text("Chamadas permitidas", style = CgType.subtitle, color = CgColor.TextPrimary)
+            CgGap(CgSpace.md)
+            CgChoiceRow(
+                options = ProtectionSettings.MAX_CALL_OPTIONS,
+                selected = uiState.settings.maxAllowedCalls,
+                label = { it.toString() },
+                onSelected = onMaxCallsChange,
+            )
+        }
+    }
+    item("regra-janela") {
+        Column(Modifier.fillMaxWidth()) {
+            Text("Dentro de", style = CgType.subtitle, color = CgColor.TextPrimary)
+            CgGap(CgSpace.md)
+            CgChoiceRow(
+                options = ProtectionSettings.WINDOW_MINUTE_OPTIONS,
+                selected = uiState.settings.windowMinutes,
+                label = { if (it >= 60) "${it / 60} h" else "$it min" },
+                onSelected = onWindowMinutesChange,
+            )
+            CgGap(CgSpace.lg)
+            Text(
+                text = "Janela deslizante: contam só as ligações dos últimos " +
+                    "${uiState.settings.windowMinutes} minutos. Quem para de ligar volta a " +
+                    "passar sozinho.",
+                style = CgType.caption,
+                color = CgColor.TextTertiary,
+            )
+        }
+    }
+}
+
+private fun LazyListScope.secaoComportamento(
+    uiState: CallGuardUiState,
+    onProtectionChange: (Boolean) -> Unit,
+    onApplyToContactsChange: (Boolean) -> Unit,
+    onNotifyOnBlockChange: (Boolean) -> Unit,
+) {
+    item("comp-cabecalho") { CgSectionHeader("Comportamento") }
+    item("comp-protecao") {
+        CgSwitchRow(
+            title = "Bloquear chamadas insistentes",
+            description = "O interruptor mestre. Desligado, nada é recusado.",
+            checked = uiState.settings.protectionEnabled,
+            onCheckedChange = onProtectionChange,
+        )
+    }
+    item("comp-div1") { CgDivider() }
+    item("comp-contatos") {
+        Column {
+            CgSwitchRow(
+                title = "Aplicar aos contatos salvos",
+                description = if (uiState.settings.applyToContacts) {
+                    "A regra vale para a agenda também. Precisa da permissão de contatos."
+                } else {
+                    "Contatos salvos nunca são bloqueados — o próprio Android nem entrega " +
+                        "essas chamadas ao app."
+                },
+                checked = uiState.settings.applyToContacts,
+                onCheckedChange = onApplyToContactsChange,
+            )
+            if (uiState.contactsModeNeedsPermission) {
+                CgNotice(
+                    text = "Permissão de contatos não concedida. Contatos salvos continuam " +
+                        "passando.",
+                    tone = CgNoticeTone.WARNING,
+                )
+                CgGap(CgSpace.sm)
+            }
+        }
+    }
+    item("comp-div2") { CgDivider() }
+    item("comp-avisos") {
+        Column {
+            CgSwitchRow(
+                title = "Avisar quando bloquear",
+                description = "Notificação silenciosa, sem som e sem vibração.",
+                checked = uiState.settings.notifyOnBlock,
+                onCheckedChange = onNotifyOnBlockChange,
+            )
+            if (uiState.notificationsNeedPermission) {
+                CgNotice(
+                    text = "Permissão de notificações não concedida. Os bloqueios vão " +
+                        "acontecer sem aviso.",
+                    tone = CgNoticeTone.WARNING,
+                )
+                CgGap(CgSpace.sm)
+            }
+        }
+    }
+}
+
+private fun LazyListScope.secaoPermitidos(
+    uiState: CallGuardUiState,
+    onAdicionar: () -> Unit,
+    onRemover: (String) -> Unit,
+) {
+    item("perm-cabecalho") {
+        CgSectionHeader(
+            label = "Nunca bloquear",
+            description = "Estes números passam sempre, não importa quantas vezes liguem.",
+        )
+    }
+
+    if (uiState.allowlist.isEmpty()) {
+        item("perm-vazio") {
+            Text(
+                text = "Nenhum número na lista.",
+                style = CgType.caption,
+                color = CgColor.TextTertiary,
+                modifier = Modifier.padding(vertical = CgSpace.sm),
+            )
+        }
+    } else {
+        items(
+            count = uiState.allowlist.size,
+            key = { indice -> "perm-${uiState.allowlist[indice].normalizedNumber}" },
+        ) { indice ->
+            val entrada = uiState.allowlist[indice]
+            Column {
+                CgListItem(
+                    title = entrada.label,
+                    subtitle = entrada.normalizedNumber,
+                    trailing = {
+                        CgIconButton(
+                            icon = Icons.Default.Delete,
+                            contentDescription = "Remover ${entrada.label}",
+                            tint = CgColor.TextTertiary,
+                            onClick = { onRemover(entrada.normalizedNumber) },
+                        )
+                    },
+                )
+                if (indice < uiState.allowlist.lastIndex) CgDivider()
+            }
+        }
+    }
+
+    item("perm-adicionar") {
+        CgTextAction(
+            text = "Adicionar número",
+            icon = Icons.Default.Add,
+            onClick = onAdicionar,
+            modifier = Modifier.padding(top = CgSpace.sm),
         )
     }
 }
 
-@Composable
-private fun AddAllowlistDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (number: String, label: String) -> Boolean,
+private fun LazyListScope.secaoPrivacidade(
+    uiState: CallGuardUiState,
+    disponibilidade: BiometricAvailability,
+    onBiometricLockChange: (Boolean) -> Unit,
 ) {
-    var number by remember { mutableStateOf("") }
-    var label by remember { mutableStateOf("") }
-    var showError by remember { mutableStateOf(false) }
+    item("priv-cabecalho") { CgSectionHeader("Privacidade") }
+    item("priv-biometria") {
+        Column {
+            CgSwitchRow(
+                title = "Exigir biometria para abrir",
+                description = "Pede sua digital ou a senha do aparelho quando o app volta " +
+                    "para a frente.",
+                checked = uiState.settings.biometricLockEnabled,
+                onCheckedChange = onBiometricLockChange,
+                enabled = disponibilidade == BiometricAvailability.AVAILABLE ||
+                    uiState.settings.biometricLockEnabled,
+            )
+            when (disponibilidade) {
+                BiometricAvailability.NONE_ENROLLED -> CgNotice(
+                    text = "Este aparelho ainda não tem digital, rosto ou senha de tela " +
+                        "cadastrados.",
+                    tone = CgNoticeTone.WARNING,
+                )
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Adicionar exceção") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = number,
-                    onValueChange = {
-                        number = it
-                        showError = false
-                    },
-                    label = { Text("Telefone") },
-                    placeholder = { Text("(11) 99999-9999") },
-                    singleLine = true,
-                    isError = showError,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                BiometricAvailability.UNSUPPORTED -> CgNotice(
+                    text = "Este aparelho não oferece biometria nem bloqueio de tela.",
+                    tone = CgNoticeTone.WARNING,
                 )
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = label,
-                    onValueChange = { label = it },
-                    label = { Text("Nome (opcional)") },
-                    placeholder = { Text("Mãe") },
-                    singleLine = true,
-                )
-                if (showError) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Número inválido.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                HorizontalDivider()
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "O número fica apenas neste aparelho.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+
+                BiometricAvailability.AVAILABLE -> Unit
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { if (!onConfirm(number, label)) showError = true },
-                enabled = number.isNotBlank(),
-            ) { Text("Adicionar") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
-        },
-    )
+        }
+    }
+}
+
+@Composable
+private fun DialogoAdicionarPermitido(
+    onDismiss: () -> Unit,
+    onConfirmar: (numero: String, nome: String) -> Boolean,
+) {
+    var numero by remember { mutableStateOf("") }
+    var nome by remember { mutableStateOf("") }
+    var erro by remember { mutableStateOf(false) }
+
+    CgDialog(
+        title = "Nunca bloquear",
+        description = "Este número passará sempre. Fica apenas neste aparelho.",
+        onDismiss = onDismiss,
+        confirmText = "Adicionar",
+        confirmEnabled = numero.isNotBlank(),
+        onConfirm = { if (!onConfirmar(numero, nome)) erro = true },
+    ) {
+        Column {
+            CgTextField(
+                value = numero,
+                onValueChange = { numero = it; erro = false },
+                label = "Telefone",
+                placeholder = "(11) 99999-8888",
+                isError = erro,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            )
+            Spacer(Modifier.height(CgSpace.md))
+            CgTextField(
+                value = nome,
+                onValueChange = { nome = it },
+                label = "Nome (opcional)",
+                placeholder = "Mãe",
+            )
+            if (erro) {
+                CgNotice(text = "Número inválido.", tone = CgNoticeTone.ERROR)
+            }
+        }
+    }
 }

@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="window_background">#FFFBFE</color>
-    <color name="ic_launcher_background">#1B6C4B</color>
+    <!--
+      Fundo da janela ANTES de o Compose assumir. Precisa ser o mesmo preto do tema, senão
+      o app pisca branco no instante entre o toque no ícone e o primeiro quadro desenhado.
+    -->
+    <color name="window_background">#000000</color>
+    <color name="ic_launcher_background">#000000</color>
 </resources>

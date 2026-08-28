@@ -2,11 +2,16 @@
 <resources>
     <!--
       Tema apenas para a janela antes de o Compose assumir. Todo o visual real vem do
-      MaterialTheme em ui/theme/Theme.kt.
+      CallGuardTheme em ui/theme/Theme.kt, sobre os tokens em ui/design/Tokens.kt.
+
+      Parent .NoActionBar e escuro: a variante Light desenhava a janela branca e deixava
+      os icones da barra de status pretos por um quadro.
     -->
-    <style name="Theme.CallGuard" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.CallGuard" parent="android:Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>

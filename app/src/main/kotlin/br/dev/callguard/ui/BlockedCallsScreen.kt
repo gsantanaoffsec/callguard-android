@@ -1,32 +1,19 @@
 package br.dev.callguard.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,19 +21,40 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import br.dev.callguard.core.PhoneNumberMasker
+import br.dev.callguard.core.PhoneOrigin
 import br.dev.callguard.data.db.BlockedCallEntity
+import br.dev.callguard.ui.design.CgColor
+import br.dev.callguard.ui.design.CgDialog
+import br.dev.callguard.ui.design.CgDivider
+import br.dev.callguard.ui.design.CgEmptyState
+import br.dev.callguard.ui.design.CgGap
+import br.dev.callguard.ui.design.CgIconButton
+import br.dev.callguard.ui.design.CgListItem
+import br.dev.callguard.ui.design.CgMetric
+import br.dev.callguard.ui.design.CgScreen
+import br.dev.callguard.ui.design.CgSectionHeader
+import br.dev.callguard.ui.design.CgSpace
+import br.dev.callguard.ui.design.CgRevealRow
+import br.dev.callguard.ui.design.CgSize
+import br.dev.callguard.ui.design.CgTag
+import br.dev.callguard.ui.design.CgTextAction
+import br.dev.callguard.ui.design.CgType
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private val DATE_TIME_FORMAT: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm", Locale.forLanguageTag("pt-BR"))
+private val DATA_HORA: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("dd/MM 'às' HH:mm", Locale.forLanguageTag("pt-BR"))
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Histórico do que foi recusado.
+ *
+ * Uma lista de linhas, não de cartões. Cada linha entrega, nesta ordem: o número, quando
+ * foi, e o que fazer a respeito. A leitura vertical fica contínua — que é o ponto de um
+ * histórico, e o que a pilha de cartões anterior impedia.
+ */
 @Composable
 fun BlockedCallsScreen(
     blockedCalls: List<BlockedCallEntity>,
@@ -56,135 +64,145 @@ fun BlockedCallsScreen(
     onAllowlistNumber: (String) -> Unit,
     bottomBar: @Composable () -> Unit,
 ) {
-    // Voltar leva para a aba principal, nao para fora do app.
+    // Voltar leva para a aba principal, não para fora do app.
     BackHandler(onBack = onBack)
 
-    // Numeros ficam mascarados por padrao; revelar e uma escolha consciente do usuario
-    // e vale so enquanto a tela esta aberta.
-    var revealNumbers by remember { mutableStateOf(false) }
+    // Números ficam mascarados por padrão; revelar é uma escolha consciente e vale só
+    // enquanto a tela está aberta.
+    var revelarNumeros by remember { mutableStateOf(false) }
+    var confirmandoLimpeza by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Chamadas bloqueadas") },
-                actions = {
-                    IconButton(onClick = onClearHistory, enabled = blockedCalls.isNotEmpty()) {
-                        Icon(Icons.Default.Delete, contentDescription = "Limpar histórico")
-                    }
-                },
+    CgScreen(
+        title = "Bloqueadas",
+        bottomBar = bottomBar,
+        actions = {
+            CgIconButton(
+                icon = Icons.Default.Delete,
+                contentDescription = "Limpar histórico",
+                enabled = blockedCalls.isNotEmpty(),
+                tint = CgColor.TextSecondary,
+                onClick = { confirmandoLimpeza = true },
             )
         },
-        bottomBar = bottomBar,
-    ) { padding ->
+    ) {
         if (blockedCalls.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "Nenhuma chamada foi bloqueada ainda.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
+            item("vazio") {
+                CgEmptyState(
+                    icon = Icons.Outlined.Lock,
+                    title = "Nenhuma chamada bloqueada",
+                    description = "Quando alguém passar do limite, a ligação aparece aqui.",
                 )
             }
-            return@Scaffold
+            return@CgScreen
         }
 
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
-        ) {
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "Mostrar números completos",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Switch(checked = revealNumbers, onCheckedChange = { revealNumbers = it })
-                }
+        item("resumo") {
+            Column(Modifier.fillMaxWidth()) {
+                CgMetric(
+                    value = blockedCalls.size.toString(),
+                    label = if (blockedCalls.size == 1) "chamada recusada" else "chamadas recusadas",
+                )
+                CgGap(CgSpace.xxl)
+                CgRevealRow(revealed = revelarNumeros, onChange = { revelarNumeros = it })
+                CgDivider()
             }
+        }
 
-            items(blockedCalls, key = { it.id }) { blocked ->
-                val jaLiberado = blocked.normalizedNumber in allowlistedNumbers
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(
-                            text = if (revealNumbers) {
-                                blocked.normalizedNumber
-                            } else {
-                                PhoneNumberMasker.mask(blocked.normalizedNumber)
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = formatTimestamp(blocked.blockedAt),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "${blocked.attemptsInWindow} tentativas recentes",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "Motivo: Limite de chamadas excedido",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-
-                        Spacer(Modifier.height(8.dp))
-                        // Consertar um bloqueio errado no momento em que ele e visto: sem
-                        // isto o usuario teria que redigitar o numero na tela principal.
-                        if (jaLiberado) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    "Na lista de exceções — não será mais bloqueado",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-                        } else {
-                            TextButton(
-                                onClick = { onAllowlistNumber(blocked.normalizedNumber) },
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                                    horizontal = 0.dp,
-                                    vertical = 0.dp,
-                                ),
-                            ) {
-                                Text("Nunca bloquear este número")
-                            }
-                        }
-                    }
-                }
+        items(
+            count = blockedCalls.size,
+            key = { indice -> blockedCalls[indice].id },
+        ) { indice ->
+            val bloqueada = blockedCalls[indice]
+            Column {
+                ItemBloqueado(
+                    bloqueada = bloqueada,
+                    revelar = revelarNumeros,
+                    jaPermitido = bloqueada.normalizedNumber in allowlistedNumbers,
+                    onPermitir = { onAllowlistNumber(bloqueada.normalizedNumber) },
+                )
+                if (indice < blockedCalls.lastIndex) CgDivider()
             }
         }
     }
+
+    if (confirmandoLimpeza) {
+        CgDialog(
+            title = "Apagar o histórico?",
+            description = "As ${blockedCalls.size} chamadas listadas aqui são removidas. " +
+                "As regras e as listas de exceção não mudam.",
+            onDismiss = { confirmandoLimpeza = false },
+            confirmText = "Apagar",
+            destructive = true,
+            onConfirm = {
+                confirmandoLimpeza = false
+                onClearHistory()
+            },
+        )
+    }
 }
 
-private fun formatTimestamp(epochMillis: Long): String =
-    DATE_TIME_FORMAT.format(
-        Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()),
+/**
+ * Uma chamada recusada.
+ *
+ * O número em monoespaçada para que colunas de dígitos fiquem alinhadas na vertical e a
+ * lista seja escaneável. A cor entra só na etiqueta e no motivo — o resto da hierarquia
+ * é tipográfica, senão a lista inteira vira vermelha e nada mais se destaca.
+ */
+@Composable
+private fun ItemBloqueado(
+    bloqueada: BlockedCallEntity,
+    revelar: Boolean,
+    jaPermitido: Boolean,
+    onPermitir: () -> Unit,
+) {
+    val origem = PhoneOrigin.of(bloqueada.normalizedNumber)
+    val quando = DATA_HORA.format(
+        Instant.ofEpochMilli(bloqueada.blockedAt).atZone(ZoneId.systemDefault()),
     )
+    val procedencia = origem.region?.let { " · $it" } ?: ""
+
+    Column(Modifier.padding(vertical = CgSpace.md)) {
+        CgListItem(
+            title = if (revelar) {
+                bloqueada.normalizedNumber
+            } else {
+                PhoneNumberMasker.mask(bloqueada.normalizedNumber)
+            },
+            titleStyle = CgType.monoStrong,
+            subtitle = "$quando$procedencia",
+            meta = "${bloqueada.attemptsInWindow} tentativas na janela",
+            trailing = {
+                CgTag(
+                    text = "recusada",
+                    color = CgColor.Negative,
+                    background = CgColor.NegativeDim,
+                )
+            },
+        )
+
+        // Consertar um bloqueio errado no momento em que ele é visto: sem isto o usuário
+        // teria que redigitar o número na tela principal.
+        if (jaPermitido) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.CheckCircle,
+                    contentDescription = null,
+                    tint = CgColor.Positive,
+                    modifier = Modifier.size(CgSize.iconSm),
+                )
+                Spacer(Modifier.width(CgSpace.sm))
+                Text(
+                    text = "Na lista de permitidos — não será mais bloqueado",
+                    style = CgType.caption,
+                    color = CgColor.Positive,
+                )
+            }
+        } else {
+            CgTextAction(
+                text = "Nunca bloquear este número",
+                onClick = onPermitir,
+                color = CgColor.TextSecondary,
+            )
+        }
+    }
+}

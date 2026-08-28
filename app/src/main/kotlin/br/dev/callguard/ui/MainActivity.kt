@@ -10,6 +10,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.activity.compose.setContent
+import android.graphics.Color
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -160,7 +162,13 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Estilo escuro fixo nas duas barras: o app é preto em todas as telas, então
+        // deixar o padrão (que segue o tema do sistema) faria as barras clarearem no
+        // modo claro do aparelho e brigarem com o conteúdo.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
 
         val openBlockedFromNotification =
             intent?.getBooleanExtra(BlockedCallNotifier.EXTRA_OPEN_BLOCKED_CALLS, false) == true
@@ -276,26 +284,15 @@ class MainActivity : FragmentActivity() {
                 }
 
                 uiState.pendingImport?.let { pendente ->
-                    androidx.compose.material3.AlertDialog(
-                        onDismissRequest = viewModel::cancelImport,
-                        title = { androidx.compose.material3.Text("Substituir suas regras?") },
-                        text = {
-                            androidx.compose.material3.Text(
-                                "O arquivo tem ${pendente.summary()}. Importar SUBSTITUI as " +
-                                    "listas e ajustes atuais deste aparelho. O histórico de " +
-                                    "chamadas não é afetado.",
-                            )
-                        },
-                        confirmButton = {
-                            androidx.compose.material3.TextButton(
-                                onClick = viewModel::confirmImport,
-                            ) { androidx.compose.material3.Text("Substituir") }
-                        },
-                        dismissButton = {
-                            androidx.compose.material3.TextButton(
-                                onClick = viewModel::cancelImport,
-                            ) { androidx.compose.material3.Text("Cancelar") }
-                        },
+                    br.dev.callguard.ui.design.CgDialog(
+                        title = "Substituir suas regras?",
+                        description = "O arquivo tem ${pendente.summary()}. Importar " +
+                            "SUBSTITUI as listas e ajustes atuais deste aparelho. O " +
+                            "histórico de chamadas não é afetado.",
+                        onDismiss = viewModel::cancelImport,
+                        confirmText = "Substituir",
+                        destructive = true,
+                        onConfirm = viewModel::confirmImport,
                     )
                 }
 

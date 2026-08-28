@@ -488,20 +488,25 @@ Ou seja: o prefixo **não vai como dígitos** para a rede. A telefonia reconhece
 disca o número real pedindo que a identificação não seja apresentada. `*31#` faz o
 inverso (força a apresentação), útil para quem deixou a ocultação permanente ligada.
 
-### Por que `ACTION_DIAL` e não `ACTION_CALL`
+### `ACTION_CALL`, com `ACTION_DIAL` como alternativa
 
-A documentação do próprio `Intent.ACTION_CALL` diz:
+A chamada é iniciada de dentro do app com `ACTION_CALL`, que exige `CALL_PHONE`. A versão
+anterior usava `ACTION_DIAL` (sem permissão), mas ele joga o usuário no discador com o
+código de serviço digitado na tela — o mecanismo ficava exposto a cada ligação.
 
-> Perform a call to someone specified by the data. […] **most applications should use the
-> `ACTION_DIAL`**.
+A permissão é pedida **apenas no primeiro toque em "Ligar"**, nunca na abertura do app. Se
+for negada, o recurso não morre: cai para `ACTION_DIAL`. Nenhuma chamada acontece sem o
+usuário tocar no botão.
 
-`ACTION_CALL` discaria sozinho, mas exigiria `CALL_PHONE` — permissão perigosa, que deixa
-um app ligar sem o usuário ver. Num app cuja premissa é pedir só o indispensável, isso não
-se paga por um toque a menos.
+O prefixo não chega a aparecer: a telefonia reconhece o código, disca o número real, e o
+handle da chamada é substituído pelo da conexão (`CallsManager`: `call.setHandle(
+connection.getHandle(), …)`, sendo `GsmMmiCode.mDialingNumber` o número **sem** prefixo).
+A tela de chamada do sistema mostra só o número limpo.
 
-`ACTION_DIAL` **não exige permissão nenhuma**: abre o discador com o número preenchido e
-quem inicia a ligação é o usuário. A tela mostra a string exata que será discada, para não
-haver surpresa.
+**Limite:** o app mostra uma tela própria de "Ligando…", mas quem desenha a interface da
+chamada em curso (mudo, viva-voz, desligar) é o sistema. Substituí-la exigiria ser o
+**discador padrão** do aparelho (`InCallService` + `ROLE_DIALER`), o que faria este app
+assumir TODAS as chamadas — decisão bem maior do que a de ocultar o próprio número.
 
 Verificado também que o Telecom não barra este caso: em
 `NewOutgoingCallIntentBroadcaster`, apenas códigos MMI **perigosos** são restritos a apps

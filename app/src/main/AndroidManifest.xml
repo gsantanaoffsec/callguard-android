@@ -35,6 +35,17 @@
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      Usada apenas pela aba "Ligar com numero oculto", para iniciar a chamada de dentro
+      do app em vez de jogar o usuario no discador com um codigo de servico visivel na
+      tela.
+
+      So e SOLICITADA quando o usuario toca em "Ligar" pela primeira vez. Se for negada,
+      o app continua funcionando: cai para ACTION_DIAL, que abre o discador e nao exige
+      permissao. Nenhuma chamada e feita sem o usuario tocar no botao.
+    -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+
     <!-- O app so faz sentido em aparelhos com telefonia. -->
     <uses-feature
         android:name="android.hardware.telephony"

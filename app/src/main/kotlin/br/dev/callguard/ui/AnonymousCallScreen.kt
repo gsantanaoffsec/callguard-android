@@ -1,12 +1,17 @@
 package br.dev.callguard.ui
 
-import android.content.Intent
-import android.net.Uri
-import android.telephony.TelephonyManager
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -17,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -26,52 +32,46 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import br.dev.callguard.core.CallerIdCodes
+import br.dev.callguard.core.PhoneOrigin
 
 /**
  * Aba para ligar com o proprio numero oculto.
  *
- * Usa `Intent.ACTION_DIAL`, que a documentacao do Android recomenda para aplicativos em
- * geral ("most applications should use the ACTION_DIAL") e que **nao exige permissao
- * nenhuma**: abre o discador com o numero preenchido e quem inicia a ligacao e o usuario.
- *
- * A alternativa, `ACTION_CALL`, discaria sozinha mas exigiria `CALL_PHONE` -- uma
- * permissao perigosa, que permite a um app ligar sem o usuario ver. Nao vale um toque
- * a menos.
+ * A tela mostra apenas o numero que sera chamado. O codigo de servico usado para pedir a
+ * ocultacao nao aparece em lugar nenhum da interface -- e detalhe de implementacao, nao
+ * informacao util para quem esta ligando.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AnonymousCallScreen(
+    isEmergencyNumber: (String) -> Boolean,
+    onPlaceCall: (String) -> Unit,
     bottomBar: @Composable () -> Unit,
 ) {
-    val context = LocalContext.current
     var numeroDigitado by remember { mutableStateOf("") }
+    var ligandoPara by remember { mutableStateOf<String?>(null) }
 
     val numeroLimpo = CallerIdCodes.sanitizeDialNumber(numeroDigitado)
-    val stringDiscada = CallerIdCodes.buildHiddenCallerIdNumber(numeroDigitado)
-
-    // Numeros de emergencia sempre transmitem sua identidade -- a rede ignora o CLIR.
-    // Em vez de oferecer um caminho que nao funciona, o app diz isso claramente.
     val ehEmergencia = remember(numeroLimpo) {
-        numeroLimpo.isNotEmpty() && runCatching {
-            context.getSystemService(TelephonyManager::class.java)
-                ?.isEmergencyNumber(numeroLimpo) ?: false
-        }.getOrDefault(false)
+        numeroLimpo.isNotEmpty() && isEmergencyNumber(numeroLimpo)
     }
-
-    val podeDiscar = stringDiscada != null && !ehEmergencia
+    val podeLigar = numeroLimpo.isNotEmpty() && !ehEmergencia
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Ligar com número oculto") }) },
@@ -89,85 +89,62 @@ fun AnonymousCallScreen(
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("Número", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(12.dp))
                     OutlinedTextField(
                         value = numeroDigitado,
                         onValueChange = { numeroDigitado = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Para quem ligar") },
+                        label = { Text("Número") },
                         placeholder = { Text("(11) 99999-8888") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     )
 
-                    if (stringDiscada != null) {
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            text = "Será discado:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            text = stringDiscada,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontFamily = FontFamily.Monospace,
-                        )
+                    if (numeroLimpo.isNotEmpty() && !ehEmergencia) {
+                        val origem = PhoneOrigin.of(numeroLimpo)
+                        if (origem.region != null) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = origem.describe(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
 
                     if (ehEmergencia) {
                         Spacer(Modifier.height(12.dp))
-                        AvisoLinha(
-                            "Número de emergência. Chamadas de emergência sempre transmitem " +
-                                "sua identidade — a rede ignora a ocultação. Ligue normalmente " +
-                                "pelo telefone.",
-                            erro = true,
-                        )
+                        Row {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Número de emergência. Chamadas de emergência sempre " +
+                                    "transmitem sua identidade — ligue normalmente pelo telefone.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
 
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(20.dp))
                     Button(
                         onClick = {
-                            val uri = Uri.parse("tel:" + Uri.encode(stringDiscada))
-                            runCatching {
-                                context.startActivity(Intent(Intent.ACTION_DIAL, uri))
-                            }
+                            ligandoPara = numeroLimpo
+                            onPlaceCall(numeroLimpo)
                         },
-                        enabled = podeDiscar,
-                        modifier = Modifier.fillMaxWidth(),
+                        enabled = podeLigar,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
                     ) {
                         Icon(Icons.Default.Call, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Abrir discador com número oculto")
+                        Spacer(Modifier.width(12.dp))
+                        Text("Ligar", style = MaterialTheme.typography.titleMedium)
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "O discador abre com o número preenchido. Você toca no botão " +
-                            "verde para ligar — o app não liga sozinho e não pede permissão " +
-                            "para fazer chamadas.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Como funciona", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "O prefixo ${CallerIdCodes.HIDE_CALLER_ID_PREFIX} é um código " +
-                            "padrão de telefonia (3GPP TS 22.030). Ele não é enviado como " +
-                            "dígitos: o Android reconhece o código e pede à operadora para não " +
-                            "apresentar o seu número naquela chamada.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Isso oculta o SEU número. Não altera o número de origem para " +
-                            "outro — isso não é possível e não é o que este app faz.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
                 }
             }
 
@@ -177,43 +154,18 @@ fun AnonymousCallScreen(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 ),
             ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Antes de contar com isso", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
-                    AvisoLinha(
-                        "Depende da operadora. Nem toda linha tem a ocultação por chamada " +
-                            "habilitada; em algumas é preciso pedir a ativação.",
+                Row(Modifier.padding(16.dp)) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(8.dp))
-                    AvisoLinha(
-                        "Muita gente não atende número privado, e vários aparelhos têm " +
-                            "\"bloquear números desconhecidos\" ligado. A ligação pode nem chegar.",
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    AvisoLinha(
-                        "O próprio CallGuard não consegue filtrar chamadas ocultas: sem número, " +
-                            "não há como contar tentativas. Quem liga oculto passa por qualquer " +
-                            "app de filtragem — inclusive este.",
-                    )
-                }
-            }
-
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Ocultar sempre", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "Se quiser que todas as suas ligações saiam ocultas, não precisa " +
-                            "deste app: use o ajuste do sistema, em Telefone → ⋮ → " +
-                            "Configurações → Serviços suplementares → Mostrar meu ID de " +
-                            "chamada → Ocultar número.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Com a ocultação permanente ligada, discar " +
-                            "${CallerIdCodes.SHOW_CALLER_ID_PREFIX} antes do número mostra o seu " +
-                            "número em uma chamada específica.",
+                        text = "Depende da operadora ter a ocultação habilitada na linha. " +
+                            "Muita gente não atende número privado, e vários aparelhos " +
+                            "bloqueiam — a ligação pode não completar.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -223,25 +175,113 @@ fun AnonymousCallScreen(
             Spacer(Modifier.height(24.dp))
         }
     }
+
+    ligandoPara?.let { numero ->
+        CallingOverlay(
+            number = numero,
+            onDismiss = { ligandoPara = null },
+        )
+    }
 }
 
+/**
+ * Tela de "ligando", exibida enquanto o sistema assume a chamada.
+ *
+ * O app nao substitui a tela de chamada do Android: para desenhar a interface real de
+ * uma ligacao em curso (mudo, viva-voz, desligar) seria preciso ser o discador padrao do
+ * aparelho, o que faria este app assumir TODAS as chamadas. Esta tela cobre a transicao.
+ */
 @Composable
-private fun AvisoLinha(texto: String, erro: Boolean = false) {
-    val cor = if (erro) {
-        MaterialTheme.colorScheme.error
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Row {
-        Icon(
-            Icons.Default.Warning,
-            contentDescription = null,
-            tint = cor,
+private fun CallingOverlay(number: String, onDismiss: () -> Unit) {
+    val transicao = rememberInfiniteTransition(label = "chamando")
+    val pulso by transicao.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulso",
+    )
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
             modifier = Modifier
-                .size(18.dp)
-                .padding(top = 2.dp),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(texto, style = MaterialTheme.typography.bodySmall, color = cor)
+                .fillMaxSize()
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .alpha(pulso),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Call,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+
+            Spacer(Modifier.height(32.dp))
+            Text(
+                text = formatForDisplay(number),
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
+            )
+
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "Ligando…",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            val origem = PhoneOrigin.of(number)
+            if (origem.region != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = origem.describe(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "Seu número não será mostrado",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+
+            Spacer(Modifier.height(48.dp))
+            TextButton(onClick = onDismiss) { Text("Voltar") }
+        }
+    }
+}
+
+/** Formatacao leve so para leitura: (11) 99999-8888. */
+private fun formatForDisplay(number: String): String {
+    val digitos = number.filter { it.isDigit() }
+    val nacional = if (number.startsWith("+55")) digitos.removePrefix("55") else digitos
+    return when (nacional.length) {
+        11 -> "(${nacional.take(2)}) ${nacional.drop(2).take(5)}-${nacional.takeLast(4)}"
+        10 -> "(${nacional.take(2)}) ${nacional.drop(2).take(4)}-${nacional.takeLast(4)}"
+        else -> number
     }
 }

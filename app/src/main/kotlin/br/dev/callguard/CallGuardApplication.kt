@@ -26,6 +26,9 @@ class CallGuardApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        // Primeiro de tudo: se algo abaixo falhar, queremos o rastro em disco.
+        ServiceLocator.crashReporter(this).install()
+
         val settings = ServiceLocator.settingsRepository(this)
         val allowlist = ServiceLocator.allowlistRepository(this)
         val blocklist = ServiceLocator.blocklistRepository(this)

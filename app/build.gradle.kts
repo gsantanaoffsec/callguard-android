@@ -14,8 +14,8 @@ android {
         // CallScreeningService + RoleManager.ROLE_CALL_SCREENING existem a partir da API 29.
         minSdk = 29
         targetSdk = 36
-        versionCode = 8
-        versionName = "2.2.0"
+        versionCode = 9
+        versionName = "2.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -102,4 +102,9 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.kotlinx.coroutines.test)
+    // Renderiza Compose de verdade na JVM: e o que permite reproduzir um crash de
+    // interface sem aparelho, em vez de deduzi-lo por leitura.
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

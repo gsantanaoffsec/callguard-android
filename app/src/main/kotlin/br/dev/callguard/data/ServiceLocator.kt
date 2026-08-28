@@ -34,6 +34,7 @@ object ServiceLocator {
     @Volatile private var customRuleRepository: CustomRuleRepository? = null
     @Volatile private var backupRepository: BackupRepository? = null
     @Volatile private var diagnosticsRepository: DiagnosticsRepository? = null
+    @Volatile private var crashReporter: CrashReporter? = null
 
     private val policy = CallScreeningPolicy()
 
@@ -129,6 +130,11 @@ object ServiceLocator {
                 normalizer = phoneNumberNormalizer(context),
                 policy = policy,
             ).also { diagnosticsRepository = it }
+        }
+
+    fun crashReporter(context: Context): CrashReporter =
+        crashReporter ?: synchronized(lock) {
+            crashReporter ?: CrashReporter(context).also { crashReporter = it }
         }
 
     fun policy(): CallScreeningPolicy = policy

@@ -28,6 +28,15 @@ data class CallGuardUiState(
     val logFilePath: String = "",
     /** Mensagem curta apos gerar/abrir o arquivo. Some na proxima acao. */
     val logStatusMessage: String? = null,
+    /**
+     * Existe um relatorio de falha guardado?
+     *
+     * Aparece na aba de registro quando verdadeiro. Sem rede, esta e a unica forma de um
+     * problema no aparelho de quem usa chegar a quem mantem o codigo.
+     */
+    val hasCrashReport: Boolean = false,
+    /** Caminho legivel do arquivo de falhas, mostrado ao lado do aviso. */
+    val crashReportPath: String = "",
     /** Laudo da central de diagnostico. `null` enquanto ainda esta sendo montado. */
     val diagnostics: DiagnosticsReport? = null,
     /** Resultado do ultimo numero testado na central de diagnostico. */

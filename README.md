@@ -412,6 +412,14 @@ instante de cada tentativa, a janela deslizante se resolve com um `WHERE
 timestamp_millis > :windowStart`, e o "reset automático" acontece sozinho, sem
 temporizador, sem serviço em background e sem `AlarmManager`.
 
+**Relatório de falha:** o app instala um `Thread.setDefaultUncaughtExceptionHandler` que
+grava o rastro de uma queda em `Android/data/br.dev.callguard/files/logs/callguard-falhas.txt`,
+ao lado do registro de decisões. Existe porque o app não tem rede: sem Crashlytics e sem
+telemetria, uma falha que só acontece no aparelho de quem usa seria invisível — restaria
+o diálogo genérico do sistema, que diz que há um bug mas não diz qual. O arquivo não
+contém número de telefone (só nomes de classe e linha) e só sai do aparelho se a pessoa
+mandar. A aba Registro mostra um aviso no topo quando existe um.
+
 **Retenção:** tentativas são apagadas depois de 6 h ou **2× a maior janela existente no
 sistema**, o que for maior, em cada screening. A palavra "maior" faz trabalho aqui: com
 uma regra por número de 6 h convivendo com a regra geral de 15 min, podar pela geral
@@ -1173,7 +1181,7 @@ Compilado e testado nesta máquina antes da entrega:
 ```
 > Task :app:compileDebugKotlin        (sem erros)
 > Task :app:kspDebugKotlin            (Room gerou os DAOs, schema v3 exportado)
-> Task :app:testDebugUnitTest         100 testes, 0 falhas
+> Task :app:testDebugUnitTest         105 testes, 0 falhas
 > Task :app:lintVitalRelease          (sem erros fatais)
 > Task :app:assembleRelease           (R8 + shrinkResources)
 BUILD SUCCESSFUL
@@ -1187,13 +1195,14 @@ BUILD SUCCESSFUL
 | `SchedulePolicyTest` | 11 | 0 |
 | `BackupCodecTest` | 11 | 0 |
 | `CallAttemptDaoTest` | 6 | 0 |
+| `HomeScreenInteractionTest` | 5 | 0 |
 | `CallerIdCodesTest` | 6 | 0 |
 | `BrazilPhoneRulesTest` | 5 | 0 |
 | `PhoneNumberMaskerTest` | 3 | 0 |
 | `ProtectionSettingsTest` | 3 | 0 |
-| **Total** | **100** | **0** |
+| **Total** | **105** | **0** |
 
-APK release: **3,6 MB** com R8 (`CallGuard-2.2.0.apk`, versionCode 8). O APK debug fica
+APK release: **3,6 MB** com R8 (`CallGuard-2.2.1.apk`, versionCode 9). O APK debug fica
 em ~31 MB por carregar ferramental de desenvolvimento — serve para depurar, não para
 distribuir.
 

@@ -25,6 +25,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import br.dev.callguard.core.CallerIdCodes
 import br.dev.callguard.core.DiagnosticFix
+import br.dev.callguard.data.ServiceLocator
 import br.dev.callguard.screening.BlockedCallNotifier
 import br.dev.callguard.ui.theme.CallGuardTheme
 
@@ -105,6 +106,26 @@ class MainActivity : FragmentActivity() {
         setIntent(intent)
         if (intent.getBooleanExtra(BlockedCallNotifier.EXTRA_OPEN_BLOCKED_CALLS, false)) {
             pendingOpenBlockedCalls = true
+        }
+    }
+
+    /**
+     * Dispara um pedido de permissao sem deixar o app morrer se o aparelho recusar.
+     *
+     * `ActivityResultLauncher.launch` pode lancar -- por registro perdido, por politica
+     * do fabricante, por estado de ciclo de vida. Quando isso acontece o certo nao e
+     * engolir em silencio nem cair: o rastro vai para o arquivo de falhas e o usuario e
+     * levado a tela de permissoes do sistema, onde consegue conceder na mao. O recurso
+     * continua alcancavel, e a causa fica registrada.
+     */
+    private fun pedirPermissao(
+        launcher: androidx.activity.compose.ManagedActivityResultLauncher<String, Boolean>,
+        permissao: String,
+    ) {
+        runCatching { launcher.launch(permissao) }.onFailure { erro ->
+            ServiceLocator.crashReporter(this)
+                .recordHandled(erro, "pedido da permissao $permissao")
+            abrirAjustesDoApp()
         }
     }
 
@@ -242,6 +263,7 @@ class MainActivity : FragmentActivity() {
 
             androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
                 viewModel.refreshSystemState()
+                viewModel.refreshCrashReport()
                 onPauseOrDispose { }
             }
 
@@ -307,7 +329,14 @@ class MainActivity : FragmentActivity() {
                     CallGuardScreen.HOME -> HomeScreen(
                         uiState = uiState,
                         onRequestRole = {
-                            viewModel.createRoleRequestIntent()?.let(roleLauncher::launch)
+                            val pedido = viewModel.createRoleRequestIntent()
+                            if (pedido != null) {
+                                runCatching { roleLauncher.launch(pedido) }.onFailure { erro ->
+                                    ServiceLocator.crashReporter(this@MainActivity)
+                                        .recordHandled(erro, "pedido do papel de filtro")
+                                    abrirAjustesDoApp()
+                                }
+                            }
                         },
                         onProtectionChange = viewModel::setProtectionEnabled,
                         onMaxCallsChange = viewModel::setMaxAllowedCalls,
@@ -316,7 +345,10 @@ class MainActivity : FragmentActivity() {
                             if (enabled && !uiState.hasReadContactsPermission) {
                                 // Pedimos READ_CONTACTS somente neste ponto: e o unico
                                 // momento em que ela e realmente necessaria.
-                                contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+                                pedirPermissao(
+                                    contactsPermissionLauncher,
+                                    Manifest.permission.READ_CONTACTS,
+                                )
                             }
                             viewModel.setApplyToContacts(enabled)
                         },
@@ -327,7 +359,8 @@ class MainActivity : FragmentActivity() {
                                 !uiState.canPostNotifications &&
                                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                             ) {
-                                notificationsPermissionLauncher.launch(
+                                pedirPermissao(
+                                    notificationsPermissionLauncher,
                                     Manifest.permission.POST_NOTIFICATIONS,
                                 )
                             }
@@ -372,7 +405,10 @@ class MainActivity : FragmentActivity() {
                                 placeHiddenCall(numero)
                             } else {
                                 // Pedida so agora, no primeiro uso real do recurso.
-                                callPermissionLauncher.launch(Manifest.permission.CALL_PHONE)
+                                pedirPermissao(
+                                    callPermissionLauncher,
+                                    Manifest.permission.CALL_PHONE,
+                                )
                             }
                         },
                         bottomBar = barraDeAbas,
@@ -397,13 +433,15 @@ class MainActivity : FragmentActivity() {
                                             ?.let(roleLauncher::launch)
                                     },
                                     pedirContatos = {
-                                        contactsPermissionLauncher.launch(
+                                        pedirPermissao(
+                                            contactsPermissionLauncher,
                                             Manifest.permission.READ_CONTACTS,
                                         )
                                     },
                                     pedirNotificacoes = {
                                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                            notificationsPermissionLauncher.launch(
+                                            pedirPermissao(
+                                                notificationsPermissionLauncher,
                                                 Manifest.permission.POST_NOTIFICATIONS,
                                             )
                                         } else {
@@ -429,6 +467,29 @@ class MainActivity : FragmentActivity() {
                         events = uiState.screeningEvents,
                         friendlyPath = uiState.logFilePath,
                         statusMessage = uiState.logStatusMessage,
+                        hasCrashReport = uiState.hasCrashReport,
+                        crashReportPath = uiState.crashReportPath,
+                        onOpenCrashReport = {
+                            viewModel.crashReportUri()?.let { uri ->
+                                abrir(
+                                    Intent(Intent.ACTION_VIEW).apply {
+                                        setDataAndType(uri, "text/plain")
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    },
+                                )
+                            }
+                        },
+                        onShareCrashReport = {
+                            viewModel.crashReportUri()?.let { uri ->
+                                val enviar = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                abrir(Intent.createChooser(enviar, "Enviar relatório de falha"))
+                            }
+                        },
+                        onClearCrashReport = viewModel::clearCrashReport,
                         onGenerateAndOpen = {
                             viewModel.prepareLogFile { uri ->
                                 val abrir = Intent(Intent.ACTION_VIEW).apply {

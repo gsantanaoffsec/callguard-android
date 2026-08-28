@@ -62,6 +62,11 @@ fun LogsScreen(
     events: List<ScreeningEventEntity>,
     friendlyPath: String,
     statusMessage: String?,
+    hasCrashReport: Boolean,
+    crashReportPath: String,
+    onOpenCrashReport: () -> Unit,
+    onShareCrashReport: () -> Unit,
+    onClearCrashReport: () -> Unit,
     onGenerateAndOpen: () -> Unit,
     onGenerateAndShare: () -> Unit,
     onRefreshFile: () -> Unit,
@@ -91,6 +96,17 @@ fun LogsScreen(
             )
         },
     ) {
+        if (hasCrashReport) {
+            item("falha") {
+                RelatorioDeFalha(
+                    caminho = crashReportPath,
+                    onAbrir = onOpenCrashReport,
+                    onEnviar = onShareCrashReport,
+                    onApagar = onClearCrashReport,
+                )
+            }
+        }
+
         item("arquivo") {
             Column(Modifier.fillMaxWidth()) {
                 CgSectionHeader(label = "Arquivo no celular", top = true)
@@ -218,6 +234,47 @@ private fun EntradaDeRegistro(evento: ScreeningEventEntity, revelar: Boolean) {
         CgDataRow("Motivo", ScreeningLogRepository.translateReason(evento.reason))
         if (evento.attemptsInWindow > 0) {
             CgDataRow("Tentativas na janela", evento.attemptsInWindow.toString())
+        }
+    }
+}
+
+/**
+ * Aviso de que uma falha foi registrada.
+ *
+ * Fica no topo da aba porque, quando existe, e a informacao mais importante da tela --
+ * mais do que qualquer decisao de filtragem. O app nao envia nada sozinho: o arquivo so
+ * sai daqui se a pessoa mandar.
+ */
+@Composable
+private fun RelatorioDeFalha(
+    caminho: String,
+    onAbrir: () -> Unit,
+    onEnviar: () -> Unit,
+    onApagar: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        CgSectionHeader(label = "Falha registrada", top = true)
+        Text(
+            text = "O app fechou sozinho em algum momento e o motivo tecnico ficou gravado " +
+                "neste arquivo. Ele nao contem numero de telefone -- so nomes de classe e " +
+                "linha. Nada e enviado automaticamente.",
+            style = CgType.caption,
+            color = CgColor.TextSecondary,
+        )
+        CgGap(CgSpace.md)
+        Text(text = caminho, style = CgType.mono, color = CgColor.TextTertiary)
+        CgGap(CgSpace.xl)
+        CgPrimaryButton(
+            text = "Enviar o relatorio",
+            icon = Icons.Default.Share,
+            onClick = onEnviar,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        CgGap(CgSpace.sm)
+        Row(Modifier.fillMaxWidth()) {
+            CgSecondaryButton(text = "Abrir", onClick = onAbrir, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(CgSpace.md))
+            CgSecondaryButton(text = "Apagar", onClick = onApagar, modifier = Modifier.weight(1f))
         }
     }
 }

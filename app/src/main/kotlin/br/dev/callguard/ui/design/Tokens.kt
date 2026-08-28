@@ -125,9 +125,12 @@ object CgSize {
  * Curto e sem elasticidade. Microinteração que se faz notar deixa de ser microinteração.
  */
 object CgMotion {
-    const val fast = 120
-    const val normal = 200
-    const val slow = 320
+    // Subidos depois de a primeira versao ser considerada rapida demais. Continuam
+    // curtos o bastante para nao atrasar ninguem: acima de ~450 ms a animacao passa a
+    // ser esperada em vez de percebida.
+    const val fast = 180
+    const val normal = 300
+    const val slow = 440
 
     val standard: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
     val decelerate: Easing = CubicBezierEasing(0f, 0f, 0f, 1f)

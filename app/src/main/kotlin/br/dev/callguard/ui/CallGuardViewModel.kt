@@ -51,6 +51,7 @@ class CallGuardViewModel(
     private val customRuleRepository: CustomRuleRepository,
     private val backupRepository: BackupRepository,
     private val diagnosticsRepository: DiagnosticsRepository,
+    private val crashReporter: br.dev.callguard.data.CrashReporter,
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(CallGuardUiState())
@@ -101,8 +102,33 @@ class CallGuardViewModel(
             }
         }
         _uiState.update { it.copy(logFilePath = screeningLogRepository.friendlyLogPath()) }
+        refreshCrashReport()
         refreshSystemState()
     }
+
+    /** Reconsulta a existencia do relatorio de falha. Barato: e um `length()` em disco. */
+    fun refreshCrashReport() {
+        _uiState.update {
+            it.copy(
+                hasCrashReport = crashReporter.hasReport(),
+                crashReportPath = crashReporter.friendlyPath(),
+            )
+        }
+    }
+
+    fun clearCrashReport() {
+        crashReporter.clear()
+        refreshCrashReport()
+    }
+
+    /** URI do arquivo de falhas, para abrir ou enviar pelo seletor do sistema. */
+    fun crashReportUri(): android.net.Uri? = runCatching {
+        androidx.core.content.FileProvider.getUriForFile(
+            getApplication(),
+            "${getApplication<Application>().packageName}.fileprovider",
+            crashReporter.file(),
+        )
+    }.getOrNull()
 
     fun refreshSystemState() {
         _uiState.update {
@@ -425,6 +451,7 @@ class CallGuardViewModel(
                     customRuleRepository = ServiceLocator.customRuleRepository(application),
                     backupRepository = ServiceLocator.backupRepository(application),
                     diagnosticsRepository = ServiceLocator.diagnosticsRepository(application),
+                    crashReporter = ServiceLocator.crashReporter(application),
                 )
             }
         }

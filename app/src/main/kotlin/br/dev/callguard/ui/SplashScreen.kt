@@ -60,9 +60,16 @@ private const val CONTINUE_HINT = "clique em qualquer lugar da tela"
  * telefone chamando, a insistencia, o escudo se fechando, a chamada sendo contida, o
  * escudo assumindo o estado ligado e a marca assentando. Depois disto o relogio para --
  * a cena congela exatamente onde terminou e espera o toque, em vez de sumir sozinha.
+ *
+ * Sobre a duracao: a primeira versao tinha 1,1 s e a segunda 2,6 s, e as duas foram
+ * consideradas rapidas demais. O problema nao era so o total -- era que seis tempos
+ * dentro de 2,6 s deixam menos de meio segundo para cada um, e movimento que dura menos
+ * de meio segundo e percebido como corte, nao como movimento. Em 4,6 s cada tempo tem
+ * espaco para comecar, acontecer e terminar. Nao ha custo de espera: a cena congela e
+ * quem tem pressa toca a tela antes de ela acabar.
  */
-private const val ANIMATION_MILLIS = 2600
-private const val EXIT_MILLIS = 320
+private const val ANIMATION_MILLIS = 4600
+private const val EXIT_MILLIS = 420
 
 private val Ink = Color(0xFF000000)
 private val Paper = Color(0xFFFFFFFF)
@@ -126,7 +133,7 @@ fun SplashScreen(onFinished: () -> Unit) {
         initialValue = 0.38f,
         targetValue = 0.92f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = Standard),
+            animation = tween(2200, easing = Standard),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "respiracao",
@@ -283,10 +290,10 @@ private fun DrawScope.desenharCena(t: Float, cache: CenaCache) {
  * pouco, como um toque de telefone que ja comecou.
  */
 private fun DrawScope.desenharPonto(t: Float, centro: Offset, unidade: Float) {
-    val entrada = trecho(t, 0.03f, 0.13f, Decelerate)
+    val entrada = trecho(t, 0.02f, 0.16f, Decelerate)
     if (entrada <= 0f) return
     // Some quando o telefone toma o lugar dele dentro do escudo.
-    val saida = trecho(t, 0.42f, 0.52f, Standard)
+    val saida = trecho(t, 0.44f, 0.54f, Standard)
     val alfa = entrada * (1f - saida)
     if (alfa <= 0f) return
     val raio = unidade * 0.016f * (0.6f + 0.4f * entrada) * (1f - saida * 0.4f)
@@ -308,10 +315,10 @@ private fun DrawScope.desenharAneis(t: Float, centro: Offset, lado: Float, unida
 
     // Aneis livres: inicio, fim. As janelas encurtam de proposito.
     val livres = arrayOf(
-        0.09f to 0.36f,
-        0.15f to 0.40f,
-        0.21f to 0.44f,
-        0.26f to 0.47f,
+        0.10f to 0.38f,
+        0.16f to 0.42f,
+        0.22f to 0.45f,
+        0.27f to 0.48f,
     )
     for ((inicio, fim) in livres) {
         val p = trecho(t, inicio, fim, Decelerate)
@@ -325,7 +332,7 @@ private fun DrawScope.desenharAneis(t: Float, centro: Offset, lado: Float, unida
     }
 
     // Aneis contidos: param no limite do escudo.
-    val contidos = arrayOf(0.56f to 0.72f, 0.62f to 0.78f)
+    val contidos = arrayOf(0.57f to 0.74f, 0.63f to 0.80f)
     for ((inicio, fim) in contidos) {
         val p = trecho(t, inicio, fim, Decelerate)
         if (p <= 0f || p >= 1f) continue
@@ -348,7 +355,7 @@ private fun DrawScope.desenharAneis(t: Float, centro: Offset, lado: Float, unida
  * fecha le diferente de um escudo que e contornado.
  */
 private fun DrawScope.desenharContorno(t: Float, cache: CenaCache, lado: Float) {
-    val traco = trecho(t, 0.30f, 0.60f, Standard)
+    val traco = trecho(t, 0.30f, 0.62f, Standard)
     if (traco <= 0f) return
 
     val comprimento = cache.medidor.length
@@ -367,7 +374,7 @@ private fun DrawScope.desenharContorno(t: Float, cache: CenaCache, lado: Float) 
 
 /** O telefone dentro do escudo, enquanto o fundo ainda e preto. */
 private fun DrawScope.desenharTelefoneBranco(t: Float, cache: CenaCache) {
-    val p = trecho(t, 0.44f, 0.58f, Decelerate)
+    val p = trecho(t, 0.46f, 0.60f, Decelerate)
     if (p <= 0f) return
     drawPath(
         path = cache.telefone,
@@ -385,7 +392,7 @@ private fun DrawScope.desenharTelefoneBranco(t: Float, cache: CenaCache) {
  * -- protecao ativa dita por forma, nao por texto.
  */
 private fun DrawScope.desenharEnchimento(t: Float, cache: CenaCache, centro: Offset, lado: Float) {
-    val p = trecho(t, 0.68f, 0.86f, Standard)
+    val p = trecho(t, 0.70f, 0.88f, Standard)
     if (p <= 0f) return
 
     val topoEscudo = centro.y - lado * 1.12f

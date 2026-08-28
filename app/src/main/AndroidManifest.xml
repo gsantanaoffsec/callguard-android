@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!--
       UNICA permissao declarada, e mesmo assim opcional na pratica.
@@ -45,6 +46,21 @@
       permissao. Nenhuma chamada e feita sem o usuario tocar no botao.
     -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
+
+    <!--
+      Biometria. Permissao "normal": concedida na instalacao, sem dialogo de tempo de
+      execucao. So e usada quando o proprio usuario liga o bloqueio do app.
+    -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <!--
+      A biblioteca androidx.biometric declara USE_FINGERPRINT para atender ao Android 8.1
+      e anteriores. O minSdk deste app e 29, entao essa permissao nunca seria consultada;
+      removemos para que a lista mostrada ao usuario descreva o que o app de fato usa.
+    -->
+    <uses-permission
+        android:name="android.permission.USE_FINGERPRINT"
+        tools:node="remove" />
 
     <!-- O app so faz sentido em aparelhos com telefonia. -->
     <uses-feature

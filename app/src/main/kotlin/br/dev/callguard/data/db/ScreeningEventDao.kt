@@ -30,6 +30,9 @@ abstract class ScreeningEventDao {
     @Query("DELETE FROM screening_events")
     abstract suspend fun deleteAll()
 
+    @Query("SELECT COUNT(*) FROM screening_events")
+    abstract suspend fun count(): Int
+
     /** Grava o evento e mantem a tabela limitada, numa transacao so. */
     @Transaction
     open suspend fun record(event: ScreeningEventEntity, keep: Int) {

@@ -27,11 +27,18 @@ class CallHistoryRepository(
         normalizedNumber: String,
         nowMillis: Long,
         windowMillis: Long,
+        largestWindowMillis: Long = windowMillis,
     ): List<Long> = attemptDao.recordAttemptAndGetPrevious(
         number = normalizedNumber,
         now = nowMillis,
         windowMillis = windowMillis,
-        retentionMillis = maxOf(SettingsRepository.ATTEMPT_RETENTION_MILLIS, windowMillis * 2),
+        // A retencao precisa cobrir a MAIOR janela existente no sistema, e nao apenas a
+        // desta chamada: com uma regra personalizada de 6 horas convivendo com a global
+        // de 15 minutos, podar pela global apagaria tentativas que a outra ainda precisa.
+        retentionMillis = maxOf(
+            SettingsRepository.ATTEMPT_RETENTION_MILLIS,
+            maxOf(windowMillis, largestWindowMillis) * 2,
+        ),
     )
 
     suspend fun recordBlockedCall(

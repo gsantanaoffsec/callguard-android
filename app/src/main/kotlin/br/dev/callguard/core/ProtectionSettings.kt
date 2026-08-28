@@ -27,6 +27,15 @@ data class ProtectionSettings(
      * bloqueios -- o que esconde dele uma informacao que e sua.
      */
     val notifyOnBlock: Boolean = DEFAULT_NOTIFY_ON_BLOCK,
+    /**
+     * Exigir biometria (ou a senha do aparelho) para abrir o app.
+     *
+     * Protege o que o app acumula -- quem ligou, quando, e as regras -- de quem pega o
+     * celular destravado. Nao criptografa nada: o banco ja esta na area privada do app,
+     * inacessivel a outros aplicativos. Prometer criptografia aqui seria vender uma
+     * garantia que a chave, guardada no mesmo aparelho, nao sustenta.
+     */
+    val biometricLockEnabled: Boolean = DEFAULT_BIOMETRIC_LOCK,
 ) {
     init {
         require(maxAllowedCalls >= 1) { "maxAllowedCalls deve ser >= 1" }
@@ -35,11 +44,16 @@ data class ProtectionSettings(
 
     val windowMinutes: Int get() = TimeUnit.MILLISECONDS.toMinutes(windowMillis).toInt()
 
+    /** A regra geral, na forma que o motor de decisao consome. */
+    fun globalPolicy(): CallPolicy =
+        CallPolicy(maxAllowedCalls, windowMillis, PolicySource.GLOBAL)
+
     companion object {
         const val DEFAULT_PROTECTION_ENABLED = true
         const val DEFAULT_MAX_ALLOWED_CALLS = 3
         const val DEFAULT_APPLY_TO_CONTACTS = false
         const val DEFAULT_NOTIFY_ON_BLOCK = true
+        const val DEFAULT_BIOMETRIC_LOCK = false
         const val DEFAULT_WINDOW_MINUTES = 15
 
         val DEFAULT_WINDOW_MILLIS: Long = TimeUnit.MINUTES.toMillis(DEFAULT_WINDOW_MINUTES.toLong())
@@ -58,12 +72,14 @@ data class ProtectionSettings(
             windowMinutes: Int,
             applyToContacts: Boolean,
             notifyOnBlock: Boolean = DEFAULT_NOTIFY_ON_BLOCK,
+            biometricLockEnabled: Boolean = DEFAULT_BIOMETRIC_LOCK,
         ): ProtectionSettings = ProtectionSettings(
             protectionEnabled = protectionEnabled,
             maxAllowedCalls = maxAllowedCalls.coerceIn(1, 50),
             windowMillis = TimeUnit.MINUTES.toMillis(windowMinutes.coerceIn(1, 24 * 60).toLong()),
             applyToContacts = applyToContacts,
             notifyOnBlock = notifyOnBlock,
+            biometricLockEnabled = biometricLockEnabled,
         )
     }
 }

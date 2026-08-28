@@ -7,9 +7,13 @@ import android.telecom.PhoneAccount
 import android.telephony.TelephonyManager
 import android.util.Log
 import br.dev.callguard.core.AllowReason
+import br.dev.callguard.core.CallPolicy
 import br.dev.callguard.core.IncomingCall
+import br.dev.callguard.core.PolicyResolution
 import br.dev.callguard.core.ScreeningDecision
 import br.dev.callguard.data.ServiceLocator
+import java.time.Instant
+import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -60,7 +64,12 @@ class InsistentCallScreeningService : CallScreeningService() {
         super.onDestroy()
     }
 
-    /** Passos 1 a 11 do fluxo: traduz `Call.Details`, consulta o estado local e decide. */
+    /**
+     * Traduz `Call.Details`, resolve a politica aplicavel e decide.
+     *
+     * A resolucao vem antes de qualquer consulta ao historico: quando a decisao ja sai
+     * dela (emergencia, allowlist, blocklist, contato protegido), o banco nem e aberto.
+     */
     private suspend fun decide(callDetails: Call.Details): ScreeningOutcome {
         val now = System.currentTimeMillis()
         val locator = ServiceLocator
@@ -75,56 +84,70 @@ class InsistentCallScreeningService : CallScreeningService() {
             ?.takeIf { it.isNotBlank() }
 
         val normalizedNumber = locator.phoneNumberNormalizer(this).normalize(rawNumber)
+        val verificationStatus = callDetails.verificationStatusOrNull()
 
         // A protecao do sistema para emergencia ja acontece antes de chegarmos aqui
         // (o Telecom pula a filtragem inteira nesses casos). Reconferimos porque a
         // checagem nao custa permissao nenhuma e o requisito e inegociavel.
         val isEmergency = rawNumber != null && isEmergencyNumber(rawNumber)
 
-        val isAllowlisted = normalizedNumber != null &&
-            locator.allowlistRepository(this).contains(normalizedNumber)
+        val temNumero = normalizedNumber != null
+        val isAllowlisted = temNumero &&
+            locator.allowlistRepository(this).contains(normalizedNumber!!)
+        val isBlocklisted = temNumero && !isAllowlisted &&
+            locator.blocklistRepository(this).contains(normalizedNumber!!)
 
-        // Consultamos a agenda somente quando a resposta pode mudar a decisao:
-        // protecao ligada, numero ainda nao liberado e modo "nunca bloquear contatos".
+        // Consultamos a agenda somente quando a resposta pode mudar a decisao.
         val needsContactCheck = settings.protectionEnabled &&
             !settings.applyToContacts &&
             !isAllowlisted &&
+            !isBlocklisted &&
             rawNumber != null
         val isSavedContact = needsContactCheck &&
             locator.contactLookup(this).isSavedContact(rawNumber!!)
 
+        val customRule = if (temNumero) {
+            locator.customRuleRepository(this).find(normalizedNumber!!)
+        } else {
+            null
+        }
+
         val call = IncomingCall(
             normalizedNumber = normalizedNumber,
             timestampMillis = now,
+            localDateTime = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault())
+                .toLocalDateTime(),
             settings = settings,
+            globalPolicy = settings.globalPolicy(),
             isAllowlisted = isAllowlisted,
+            isBlocklisted = isBlocklisted,
             isSavedContact = isSavedContact,
             isEmergencyNumber = isEmergency,
             isIncoming = true,
+            customRule = customRule,
+            schedule = locator.settingsRepository(this).currentSchedule(),
         )
 
         val policy = locator.policy()
-        val verificationStatus = callDetails.verificationStatusOrNull()
 
-        // Se da para decidir sem historico, nem abrimos o banco. Ainda assim o evento
-        // leva numero, horario e verificacao: o log precisa explicar por que a chamada
-        // passou, e "(numero nao informado)" seria uma resposta errada.
-        policy.preScreen(call)?.let { permitida ->
-            return ScreeningOutcome(
-                decision = permitida,
+        val aplicavel = when (val resolucao = policy.resolve(call)) {
+            is PolicyResolution.Immediate -> return ScreeningOutcome(
+                decision = resolucao.decision,
                 normalizedNumber = normalizedNumber,
                 timestampMillis = now,
                 notifyOnBlock = settings.notifyOnBlock,
                 verificationStatus = verificationStatus,
             )
+            is PolicyResolution.UseWindow -> resolucao.policy
         }
 
-        // A partir daqui `normalizedNumber` nao e nulo -- `preScreen` ja teria retornado.
+        // A partir daqui `normalizedNumber` nao e nulo -- a resolucao ja teria retornado.
         val history = locator.callHistoryRepository(this)
         val previousAttempts = history.recordAttemptAndGetPrevious(
             normalizedNumber = normalizedNumber!!,
             nowMillis = now,
-            windowMillis = settings.windowMillis,
+            windowMillis = aplicavel.windowMillis,
+            largestWindowMillis = maiorJanelaDoSistema(settings.windowMillis, call.schedule),
         )
 
         return ScreeningOutcome(
@@ -133,7 +156,23 @@ class InsistentCallScreeningService : CallScreeningService() {
             timestampMillis = now,
             notifyOnBlock = settings.notifyOnBlock,
             verificationStatus = verificationStatus,
+            policy = aplicavel,
         )
+    }
+
+    /**
+     * Maior janela configurada no aparelho.
+     *
+     * A poda do historico usa este valor para nao apagar tentativas que uma regra mais
+     * longa ainda precisa -- ver secao de retencao no README.
+     */
+    private suspend fun maiorJanelaDoSistema(
+        globalWindow: Long,
+        schedule: br.dev.callguard.core.SchedulePolicy,
+    ): Long {
+        val personalizadas = ServiceLocator.customRuleRepository(this).largestWindowMillis()
+        val doHorario = if (schedule.enabled) schedule.windowMillis else 0L
+        return maxOf(globalWindow, doHorario, personalizadas)
     }
 
     /**
@@ -197,6 +236,7 @@ class InsistentCallScreeningService : CallScreeningService() {
         val timestampMillis: Long = 0L,
         val notifyOnBlock: Boolean = false,
         val verificationStatus: Int? = null,
+        val policy: CallPolicy? = null,
     )
 
     /** Passo 12: traduz a decisao para `CallResponse` e responde. */
@@ -235,7 +275,8 @@ class InsistentCallScreeningService : CallScreeningService() {
 
     private fun ScreeningDecision.describe(): String = when (this) {
         is ScreeningDecision.Allow -> "ALLOW(${reason.name})"
-        is ScreeningDecision.Block -> "BLOCK(${reason.name}, tentativas=$attemptsInWindow)"
+        is ScreeningDecision.Block ->
+            "BLOCK(${reason.name}, tentativas=$attemptsInWindow, regra=${policy?.source})"
     }
 
     private companion object {

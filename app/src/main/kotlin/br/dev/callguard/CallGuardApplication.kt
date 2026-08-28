@@ -28,12 +28,26 @@ class CallGuardApplication : Application() {
 
         val settings = ServiceLocator.settingsRepository(this)
         val allowlist = ServiceLocator.allowlistRepository(this)
+        val blocklist = ServiceLocator.blocklistRepository(this)
+        val customRules = ServiceLocator.customRuleRepository(this)
 
         applicationScope.launch { runCatching { settings.warmUp() } }
         applicationScope.launch { runCatching { allowlist.warmUp() } }
+        applicationScope.launch { runCatching { blocklist.warmUp() } }
+        applicationScope.launch { runCatching { customRules.warmUp() } }
         applicationScope.launch {
             runCatching {
                 allowlist.observeEntries().collectLatest { allowlist.onEntriesChanged(it) }
+            }
+        }
+        applicationScope.launch {
+            runCatching {
+                blocklist.observeEntries().collectLatest { blocklist.onEntriesChanged(it) }
+            }
+        }
+        applicationScope.launch {
+            runCatching {
+                customRules.observeRules().collectLatest { customRules.onRulesChanged(it) }
             }
         }
     }

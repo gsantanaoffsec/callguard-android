@@ -27,6 +27,9 @@ abstract class BlockedCallDao {
     @Query("DELETE FROM blocked_calls")
     abstract suspend fun deleteAll()
 
+    @Query("SELECT COUNT(*) FROM blocked_calls")
+    abstract suspend fun count(): Int
+
     /** Grava o bloqueio e mantem a tabela limitada, tudo em uma transacao. */
     @Transaction
     open suspend fun record(entry: BlockedCallEntity, keep: Int) {

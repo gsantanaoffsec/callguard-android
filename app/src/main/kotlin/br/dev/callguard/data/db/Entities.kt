@@ -70,3 +70,28 @@ data class ScreeningEventEntity(
      */
     @ColumnInfo(name = "verification_status") val verificationStatus: Int?,
 )
+
+/**
+ * Numero que o usuario mandou nunca aceitar.
+ *
+ * Guarda apenas o numero e a data. Nome, avatar e afins viriam de fora do aparelho ou da
+ * agenda, e nao sao necessarios para a decisao.
+ */
+@Entity(tableName = "blocklist_entries")
+data class BlocklistEntryEntity(
+    @PrimaryKey @ColumnInfo(name = "normalized_number") val normalizedNumber: String,
+    @ColumnInfo(name = "label") val label: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+)
+
+/** Limite proprio de um numero, mais especifico que a regra geral ou a de horario. */
+@Entity(tableName = "custom_rules")
+data class CustomRuleEntity(
+    @PrimaryKey @ColumnInfo(name = "normalized_number") val normalizedNumber: String,
+    @ColumnInfo(name = "label") val label: String,
+    @ColumnInfo(name = "max_allowed_calls") val maxAllowedCalls: Int,
+    @ColumnInfo(name = "window_millis") val windowMillis: Long,
+    @ColumnInfo(name = "enabled") val enabled: Boolean,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)

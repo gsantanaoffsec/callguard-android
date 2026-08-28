@@ -1,10 +1,30 @@
 # CallGuard — proteção contra chamadas insistentes
 
-Aplicativo Android que rejeita automaticamente chamadas de quem liga repetidamente,
-usando exclusivamente a arquitetura oficial `android.telecom.CallScreeningService`.
+Aplicativo Android que decide localmente quais chamadas podem tocar, usando
+exclusivamente a arquitetura oficial `android.telecom.CallScreeningService`.
 
-Regra padrão: **as 3 primeiras chamadas do mesmo número em 15 minutos passam; a 4ª é
-rejeitada.** Janela deslizante — quem para de ligar volta a passar sozinho.
+O app não tem uma regra: tem uma **hierarquia** de controle, toda decidida no aparelho.
+
+| O que você quer dizer | Onde se configura |
+|---|---|
+| "Sempre confio neste número" | Lista de permitidos |
+| "Nunca quero receber deste número" | Bloqueio permanente |
+| "Pode ligar, mas não pode insistir" | Regra por número |
+| "De madrugada quero regra mais rígida" | Modo noturno |
+| "Todo o resto segue o padrão" | Regra geral |
+
+Regra geral padrão: **as 3 primeiras chamadas do mesmo número em 15 minutos passam; a 4ª
+é rejeitada.** Janela deslizante — quem para de ligar volta a passar sozinho.
+
+Além das regras, o app traz três ferramentas para quem depende delas: uma **central de
+diagnóstico** que responde se a proteção está mesmo funcionando (e deixa testar um
+número contra as regras reais, sem gravar nada), **bloqueio opcional por biometria** e
+**exportar/importar** as regras num JSON legível.
+
+Sem servidor, sem conta, sem telemetria, sem banco comunitário de spam. O app **não tem
+permissão de internet** — essa ausência é a própria garantia arquitetural de privacidade,
+e a central de diagnóstico confirma isso lendo as permissões do pacote instalado no
+próprio aparelho.
 
 ---
 
@@ -87,7 +107,54 @@ chamadas, ele terá que escolher. Não há como coexistir.
 
 ---
 
-## 2. Arquitetura
+## 2. Ordem das regras
+
+Esta é a parte mais importante do sistema. Sem uma ordem explícita, cada exceção nova
+viraria mais um `if` disputando espaço com as outras, e a precedência acabaria dependendo
+de onde alguém escreveu a condição.
+
+A ordem vive num único lugar — `CallScreeningPolicy.resolve()` — e é lida de cima para
+baixo. A primeira que se aplicar decide.
+
+| # | Regra | Resultado |
+|---|---|---|
+| 1 | **Emergência** | `ALLOW` — absoluto, nenhuma configuração sobrescreve |
+| 2 | Proteção desligada | `ALLOW` |
+| 3 | Número indisponível | `ALLOW` |
+| 4 | Lista de permitidos | `ALLOW` |
+| 5 | **Bloqueio permanente** | `BLOCK`, sem consultar histórico |
+| 6 | Contato salvo (modo 1) | `ALLOW` |
+| 7 | Regra do número | janela própria |
+| 8 | Modo noturno ativo | janela do período |
+| 9 | Regra geral | janela padrão |
+
+**Duas decisões de ordem que merecem explicação:**
+
+A **blocklist vem depois da allowlist** porque as duas são mutuamente exclusivas por
+construção — a interface não deixa um número entrar nas duas sem confirmação explícita.
+
+A **blocklist vem antes da proteção de contatos** porque uma ação manual sobre um número
+específico é mais específica que a proteção genérica da agenda. Se você tem o João salvo
+e mesmo assim o coloca no bloqueio permanente, foi uma decisão consciente sua sobre
+aquele número — ela prevalece.
+
+### Por que resolver antes de consultar
+
+`CallScreeningPolicy` separa duas perguntas:
+
+```kotlin
+fun resolve(call: IncomingCall): PolicyResolution   // qual regra vale agora?
+fun evaluate(call: IncomingCall, previousAttempts: List<Long>): ScreeningDecision
+```
+
+`resolve` devolve `Immediate` quando a decisão já sai sem histórico (emergência,
+allowlist, blocklist, contato protegido) — e nesse caso **o banco nem é aberto**. Ou
+devolve `UseWindow` com a regra a aplicar. Isso mantém o caminho crítico curto e torna a
+precedência testável isoladamente.
+
+---
+
+## 3. Arquitetura
 
 Cinco camadas, sem cerimônia inútil:
 
@@ -99,8 +166,9 @@ Cinco camadas, sem cerimônia inútil:
 │               em IncomingCall e ScreeningDecision em CallResponse│
 ├───────────────────────────────────────────────────────────────┤
 │  core/        REGRA DE DECISÃO. Kotlin puro, zero Android.       │
-│               InsistentCallPolicy, ProtectionSettings,           │
-│               IncomingCall, ScreeningDecision, BrazilPhoneRules  │
+│               CallScreeningPolicy, CallPolicy, SchedulePolicy,   │
+│               CustomRule, IncomingCall, ScreeningDecision,       │
+│               DiagnosticsAssembler, BackupPayload, PhoneOrigin   │
 ├───────────────────────────────────────────────────────────────┤
 │  data/        SettingsRepository (DataStore) + Room repositories │
 ├───────────────────────────────────────────────────────────────┤
@@ -110,7 +178,17 @@ Cinco camadas, sem cerimônia inútil:
 
 | Componente | Responsabilidade |
 |---|---|
-| `InsistentCallPolicy` | **A regra.** Recebe telefone, horário, histórico, configurações e allowlist; devolve `Allow`/`Block`. Nenhum import de Android — é o que a torna testável. |
+| `CallScreeningPolicy` | **O motor.** Duas etapas: `resolve()` diz qual regra vale agora (sem tocar no banco) e `evaluate()` aplica a janela deslizante dessa regra. Nenhum import de Android — é o que o torna testável. |
+| `PolicyResolution` | O que `resolve()` devolve: `Immediate` (decisão pronta, banco nem abre) ou `UseWindow` (regra a aplicar sobre o histórico). |
+| `CallPolicy` / `PolicySource` | A janela já resolvida, carregando a própria origem (`GLOBAL`, `SCHEDULE`, `CUSTOM`) — assim o motor nunca precisa perguntar de onde veio o limite. |
+| `SchedulePolicy` | Modo noturno. Sem serviço, alarme nem timer: quando a chamada chega, pergunta-se que horas são. |
+| `CustomRule` | Limite próprio de um número, mais específico que horário e geral. |
+| `BlocklistRepository` | Números que nunca devem passar, com cache em memória. |
+| `CustomRuleRepository` | Regras por número, com cache do mapa inteiro. |
+| `DiagnosticsAssembler` | Monta o laudo da central de diagnóstico. Kotlin puro: julgar "isto é um problema?" é regra de produto e tem teste. |
+| `DiagnosticsRepository` | Coleta os fatos do Android e roda a simulação de um número **sem gravar nada**. |
+| `BackupCodec` / `BackupRepository` | Exportação e importação das regras em JSON legível, com validação estrita da entrada. |
+| `BiometricSupport` | Bloqueio do app por biometria ou senha do aparelho. Falha de disponibilidade libera, nunca tranca. |
 | `InsistentCallScreeningService` | Único ponto de contato com `android.telecom`. Orquestra os 12 passos e responde dentro do orçamento. |
 | `CallScreeningRoleController` | Estado e solicitação de `ROLE_CALL_SCREENING`. |
 | `SettingsRepository` | Preferências em DataStore + cache quente para o screening. |
@@ -123,11 +201,14 @@ Cinco camadas, sem cerimônia inútil:
 | `AnonymousCallScreen` | Aba para ligar com o próprio número oculto, via `ACTION_DIAL`. |
 | `PhoneOrigin` | Procedência do número (DDD, região, tipo de linha) em Kotlin puro. |
 | `ScreeningLogRepository` | Registro das decisões e geração do arquivo de log legível. |
+| `RulesScreen` | Bloqueio permanente, regras por número e modo noturno, com confirmação em cada conflito. |
+| `DiagnosticsScreen` | Laudo, teste de número, contagens da base e backup. |
+| `SplashScreen` | Abertura desenhada em `Canvas`, sem imagem nem biblioteca de animação. |
 | `CallGuardViewModel` | Estado da UI; reconsulta papel/permissão a cada `ON_RESUME`. |
 
 ---
 
-## 3. Fluxo de uma chamada
+## 4. Fluxo de uma chamada
 
 ```
 Chamada recebida
@@ -142,21 +223,24 @@ bind → InsistentCallScreeningService.onScreenCall(Call.Details)
    ├─ 1. direção != INCOMING?  → return (framework responde por nós)
    ├─ 2. handle "tel:" → rawNumber   (null se apresentação restrita)
    ├─ 3. normalize()  → "+5511999998888"
-   ├─ 4. settings.current()          (cache quente, sem I/O)
+   ├─ 4. settings.current() + schedule  (cache quente, sem I/O)
    ├─ 5. isEmergencyNumber(raw)
-   ├─ 6. allowlist.contains()        (cache em memória)
-   ├─ 7. contactLookup               (só se protegido + modo 1 + tem permissão)
+   ├─ 6. allowlist / blocklist .contains()   (caches em memória)
+   ├─ 7. customRuleRepository.find()          (cache do mapa inteiro)
+   ├─ 8. contactLookup                (só se protegido + modo 1 + tem permissão)
    │
    ▼
-policy.preScreen(call)  ─── decidiu? ──► ALLOW, sem tocar no banco
-   │ null (precisa do histórico)
+policy.resolve(call)  ──► Immediate ──► decisão pronta, banco nem abre
+   │                                     (emergência, allowlist, blocklist,
+   │                                      contato protegido, proteção off)
+   │ UseWindow(policy)   ← qual das regras venceu a precedência da seção 2
    ▼
 callAttemptDao.recordAttemptAndGetPrevious()   ◄── @Transaction:
    │   DELETE expirados; SELECT janela; INSERT atual — atômico
    ▼
 policy.evaluate(call, previousAttempts)
-   │   anteriores na janela < max  → Allow(UNDER_LIMIT)
-   │   anteriores na janela >= max → Block(CALL_LIMIT_EXCEEDED)
+   │   anteriores na janela < max  → Allow(UNDER_{GLOBAL|CUSTOM|SCHEDULE}_LIMIT)
+   │   anteriores na janela >= max → Block({GLOBAL|CUSTOM|SCHEDULE}_LIMIT_EXCEEDED)
    ▼
 respondToCall(details, CallResponse)
    │   ALLOW: Builder().build()
@@ -180,7 +264,7 @@ recusada do mesmo jeito.
 
 ---
 
-## 4. Estrutura do projeto
+## 5. Estrutura do projeto
 
 ```
 callguard-android/
@@ -201,10 +285,15 @@ callguard-android/
         │   ├── kotlin/br/dev/callguard/
         │   │   ├── CallGuardApplication.kt
         │   │   ├── core/
-        │   │   │   ├── InsistentCallPolicy.kt      ← A REGRA
+        │   │   │   ├── CallScreeningPolicy.kt      ← O MOTOR
+        │   │   │   ├── CallPolicy.kt               (janela + origem + modo noturno)
         │   │   │   ├── ProtectionSettings.kt
         │   │   │   ├── IncomingCall.kt
         │   │   │   ├── ScreeningDecision.kt
+        │   │   │   ├── DiagnosticsReport.kt
+        │   │   │   ├── BackupPayload.kt
+        │   │   │   ├── PhoneOrigin.kt
+        │   │   │   ├── CallerIdCodes.kt
         │   │   │   ├── BrazilPhoneRules.kt
         │   │   │   ├── PhoneNumberMasker.kt
         │   │   │   └── PhoneNumberNormalizer.kt
@@ -213,11 +302,20 @@ callguard-android/
         │   │   │   ├── SettingsRepository.kt
         │   │   │   ├── CallHistoryRepository.kt
         │   │   │   ├── AllowlistRepository.kt
+        │   │   │   ├── BlocklistRepository.kt
+        │   │   │   ├── CustomRuleRepository.kt
+        │   │   │   ├── ScreeningLogRepository.kt
+        │   │   │   ├── DiagnosticsRepository.kt
+        │   │   │   ├── BackupCodec.kt
+        │   │   │   ├── BackupRepository.kt
         │   │   │   └── db/
-        │   │   │       ├── CallGuardDatabase.kt
+        │   │   │       ├── CallGuardDatabase.kt    (v3, migrações escritas à mão)
         │   │   │       ├── Entities.kt
         │   │   │       ├── CallAttemptDao.kt
         │   │   │       ├── AllowlistDao.kt
+        │   │   │       ├── BlocklistDao.kt
+        │   │   │       ├── CustomRuleDao.kt
+        │   │   │       ├── ScreeningEventDao.kt
         │   │   │       └── BlockedCallDao.kt
         │   │   ├── phone/
         │   │   │   ├── TelephonyPhoneNumberNormalizer.kt
@@ -230,23 +328,35 @@ callguard-android/
         │   │       ├── MainActivity.kt
         │   │       ├── CallGuardViewModel.kt
         │   │       ├── UiState.kt
+        │   │       ├── SplashScreen.kt
         │   │       ├── HomeScreen.kt
+        │   │       ├── RulesScreen.kt
+        │   │       ├── DiagnosticsScreen.kt
+        │   │       ├── BiometricGate.kt
+        │   │       ├── AnonymousCallScreen.kt
+        │   │       ├── LogsScreen.kt
         │   │       ├── BlockedCallsScreen.kt
+        │   │       ├── CallGuardNavigationBar.kt
         │   │       └── theme/Theme.kt
         │   └── res/
         └── test/kotlin/br/dev/callguard/
             ├── core/
-            │   ├── InsistentCallPolicyTest.kt      ← os 10 casos
+            │   ├── CallScreeningPolicyTest.kt      ← precedência e janela
+            │   ├── SchedulePolicyTest.kt           ← inclusive a virada da meia-noite
+            │   ├── DiagnosticsAssemblerTest.kt
+            │   ├── PhoneOriginTest.kt
+            │   ├── CallerIdCodesTest.kt
             │   ├── BrazilPhoneRulesTest.kt
             │   ├── PhoneNumberMaskerTest.kt
             │   └── ProtectionSettingsTest.kt
-            └── data/db/
-                └── CallAttemptDaoTest.kt           ← prova da atomicidade
+            └── data/
+                ├── BackupCodecTest.kt
+                └── db/CallAttemptDaoTest.kt        ← prova da atomicidade
 ```
 
 ---
 
-## 5. Dependências
+## 6. Dependências
 
 Cada uma está no projeto porque é usada. Não há nada "por via das dúvidas".
 
@@ -258,6 +368,7 @@ Cada uma está no projeto porque é usada. Não há nada "por via das dúvidas".
 | `androidx.lifecycle:lifecycle-runtime-compose` | `collectAsStateWithLifecycle`, `LifecycleResumeEffect` — reconsultar o papel ao voltar da tela do sistema. |
 | `androidx.lifecycle:lifecycle-runtime-ktx` | `viewModelScope`. |
 | `androidx.compose:compose-bom` | Alinha as versões do Compose. |
+| `androidx.biometric:biometric` | `BiometricPrompt` do bloqueio opcional do app. Traz `FragmentActivity` junto, que é o host que ele exige. |
 | `compose.ui` / `ui-graphics` / `material3` | A interface. |
 | `compose.material:material-icons-core` | Os 6 ícones usados. Deliberadamente **não** usamos `material-icons-extended`: são milhares de vetores que inflam o APK e o tempo de build para nada. |
 | `compose.ui-tooling` (debug) | Preview no Android Studio. |
@@ -274,7 +385,7 @@ navigation-compose (duas telas), WorkManager (nada agendado), Firebase, analytic
 
 ---
 
-## 6. Decisões de armazenamento
+## 7. Decisões de armazenamento
 
 Duas tecnologias, cada uma onde faz sentido:
 
@@ -293,13 +404,22 @@ instante de cada tentativa, a janela deslizante se resolve com um `WHERE
 timestamp_millis > :windowStart`, e o "reset automático" acontece sozinho, sem
 temporizador, sem serviço em background e sem `AlarmManager`.
 
-**Retenção:** tentativas são apagadas depois de 6 h (ou 2× a janela, o que for maior),
-em cada screening. Bloqueios ficam limitados aos 100 mais recentes. Um app que lida com
-telefones não deve acumular telefones indefinidamente.
+**Retenção:** tentativas são apagadas depois de 6 h ou **2× a maior janela existente no
+sistema**, o que for maior, em cada screening. A palavra "maior" faz trabalho aqui: com
+uma regra por número de 6 h convivendo com a regra geral de 15 min, podar pela geral
+apagaria tentativas que a outra ainda precisa contar. Bloqueios ficam limitados aos 100
+mais recentes; o registro de decisões, aos 500. Um app que lida com telefones não deve
+acumular telefones indefinidamente.
+
+**Migrações:** o banco está na **v3** e as duas migrações são objetos `Migration`
+escritos à mão e conferidos contra o schema JSON que o KSP exporta — `v1→v2` cria
+`screening_events`, `v2→v3` cria `blocklist_entries` e `custom_rules`.
+`fallbackToDestructiveMigration` não é usado em lugar nenhum: quem já tem o app
+instalado perderia listas e configurações.
 
 ---
 
-## 7. Concorrência
+## 8. Concorrência
 
 O ponto onde uma race condition apareceria é a sequência *ler janela → decidir →
 gravar*. Duas chamadas quase simultâneas poderiam ler "2 anteriores" cada uma e ambas
@@ -341,13 +461,23 @@ reconstruída da tabela na próxima chamada. Nada é mantido apenas em memória.
 
 ---
 
-## 8. Privacidade e permissões
+## 9. Privacidade e permissões
 
-**Duas permissões declaradas, ambas solicitadas só quando fazem falta:**
+**Quatro permissões declaradas. Nenhuma é pedida na abertura do app; cada uma aparece no
+primeiro uso real do recurso que depende dela:**
 
-- **`READ_CONTACTS`** — pedida apenas ao ligar "aplicar a regra também aos contatos salvos".
-- **`POST_NOTIFICATIONS`** — pedida apenas ao ligar "avisar quando bloquear". Sem ela o
-  app simplesmente não notifica; nada mais muda.
+| Permissão | Quando é pedida | O que acontece sem ela |
+|---|---|---|
+| `READ_CONTACTS` | ao ligar "aplicar a regra também aos contatos salvos" | o Modo 2 não funciona (o próprio Telecom não entrega essas chamadas) |
+| `POST_NOTIFICATIONS` | ao ligar "avisar quando bloquear" | os bloqueios acontecem em silêncio |
+| `CALL_PHONE` | ao fazer a primeira ligação oculta | a aba cai para o discador do sistema, que não exige permissão |
+| `USE_BIOMETRIC` | nunca (é permissão *normal*, concedida na instalação) | — |
+
+`USE_BIOMETRIC` é de nível *normal*: não há diálogo de tempo de execução e ela só é
+exercida quando o próprio usuário liga o bloqueio do app. A biblioteca
+`androidx.biometric` ainda declara `USE_FINGERPRINT` para atender ao Android 8.1; como o
+`minSdk` daqui é 29, ela é removida do manifesto mergeado com `tools:node="remove"` —
+a lista que o usuário vê deve descrever o que o app de fato usa.
 
 Isto é possível por causa de um detalhe do Telecom
 (`CallScreeningServiceFilter.startFilterLookup`):
@@ -372,9 +502,12 @@ as chamadas de contatos continuam chegando — e aí `ContactLookup` as deixa pa
 explicitamente. É o único caso em que consultamos a agenda.
 
 **Permissões deliberadamente NÃO pedidas:** `READ_CALL_LOG` (a API de screening já
-entrega o necessário), `READ_PHONE_STATE`, `ANSWER_PHONE_CALLS`, `CALL_PHONE`,
-`INTERNET`, `RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE`.
-O app não é discador padrão e não precisa ser.
+entrega o necessário), `READ_PHONE_STATE`, `ANSWER_PHONE_CALLS`, `INTERNET`,
+`RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE`,
+`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (o diagnóstico abre a *lista* de otimização, que
+não exige permissão, em vez de pedir isenção), e qualquer permissão de armazenamento —
+o backup usa o seletor do sistema (SAF), então o arquivo nasce onde o dono mandou sem
+que o app tenha acesso a mais nada. O app não é discador padrão e não precisa ser.
 
 **Sobre a segunda permissão no APK:** ao inspecionar o APK aparece também
 `br.dev.callguard.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`. Ela é adicionada
@@ -385,13 +518,19 @@ só dentro dele — não dá acesso a nada e não aparece para o usuário.
 **Outras medidas:**
 - `android:allowBackup="false"` + regras de extração que excluem tudo: telefones não vão
   para a nuvem nem em transferência entre aparelhos.
-- Nenhum log contém número de telefone — só a decisão (`ALLOW(UNDER_LIMIT)`).
+- Nenhum log de sistema contém número de telefone — só a decisão (`ALLOW(UNDER_GLOBAL_LIMIT)`).
 - Números aparecem mascarados na tela de bloqueios; revelar é escolha explícita.
-- Sem rede: não há `INTERNET` no manifesto, então nem por engano.
+- Sem rede: não há `INTERNET` no manifesto, então nem por engano. **E isso é verificável
+  dentro do app:** a central de diagnóstico lê a lista real de permissões do pacote
+  instalado (`PackageManager.GET_PERMISSIONS`) e reporta a ausência. Uma promessa que o
+  usuário pode conferir no próprio aparelho vale mais do que uma linha em README.
+- O backup exporta **apenas configuração** — ajustes, listas e regras. Histórico de
+  chamadas não vai junto: backup existe para recriar as regras em outro aparelho, não
+  para levar embora quem ligou para você.
 
 ---
 
-## 9. `BIND_SCREENING_SERVICE`: a distinção que importa
+## 10. `BIND_SCREENING_SERVICE`: a distinção que importa
 
 ```xml
 <service
@@ -414,7 +553,7 @@ poderia se conectar ao nosso serviço.
 
 ---
 
-## 10. `CallResponse`: por que esta combinação
+## 11. `CallResponse`: por que esta combinação
 
 | Método | O que faz | Usamos? |
 |---|---|---|
@@ -441,7 +580,7 @@ que se desfaz sozinha quando a janela esvazia.
 
 ---
 
-## 11. Avisos e correção rápida
+## 12. Avisos e correção rápida
 
 **Aviso silencioso de bloqueio.** O app usa um canal `IMPORTANCE_LOW` com
 `setSilent(true)`: a notificação aparece na barra, sem som e sem vibração, com o número
@@ -459,7 +598,7 @@ chave diferente e a exceção não pegaria. Itens já liberados aparecem marcado
 
 ---
 
-## 12. Aba "Ligar oculto" (CLIR)
+## 13. Aba "Ligar oculto" (CLIR)
 
 Permite ligar com **o seu próprio número oculto** — a pessoa vê "Número privado".
 
@@ -534,7 +673,7 @@ Ocultar número.**
 
 ---
 
-## 13. Aba "Logs"
+## 14. Aba "Logs"
 
 Registro legível do que o app decidiu — **toda** chamada analisada, permitida ou
 bloqueada. Sem as permitidas não daria para responder "por que essa não foi bloqueada?".
@@ -599,7 +738,169 @@ explicitamente por que a operadora não aparece.
 
 ---
 
-## 14. Instalação
+## 15. Central de diagnóstico
+
+Existe por causa da pergunta mais cara de um app de filtragem: *"será que está mesmo
+funcionando?"*. O usuário não tem como ver o que **não** aconteceu — uma ligação que não
+tocou é indistinguível de um app quebrado.
+
+A tela responde com fatos verificáveis no próprio aparelho, ordenados por gravidade:
+primeiro o que impede a proteção de existir, depois o que a degrada, e só então o que é
+informativo. Quem abre esta tela abriu porque algo parece errado; a resposta tem que
+estar em cima.
+
+| Item | Quando vira bloqueio | Quando vira aviso |
+|---|---|---|
+| Papel de filtro de chamadas | não concedido, ou indisponível no aparelho | — |
+| Proteção | interruptor desligado | — |
+| Contatos salvos | Modo 2 ligado sem `READ_CONTACTS` | — |
+| Aviso de bloqueio | — | avisos ligados sem permissão de notificar |
+| Economia de bateria | — | app sujeito à otimização |
+| Acesso à rede | `INTERNET` presente no pacote instalado | — |
+
+Duas escolhas que valem explicação:
+
+**Economia de bateria é aviso, nunca bloqueio.** Quem faz o *bind* no serviço de
+screening é o sistema, e o serviço vive por poucos segundos — a restrição de background
+não o impede. Marcar como quebrado seria alarme falso; omitir seria esconder um fator
+real em aparelhos Samsung, onde a gestão agressiva de background é conhecida.
+
+**Modo 2 sem permissão é bloqueio, não aviso.** O usuário pediu para aplicar a regra aos
+contatos e isso simplesmente não acontece: o Telecom nem entrega essas chamadas ao app.
+Chamar de "aviso" seria mentira.
+
+### Testar um número
+
+O campo de teste roda a decisão **real** — o mesmo `CallScreeningPolicy` que o serviço
+usa, contra as regras e o histórico que já estão no aparelho — e mostra o que
+aconteceria se aquele número ligasse agora: qual regra pega a ligação, quantas
+tentativas já existem na janela, e o veredito.
+
+Duas coisas importam aqui:
+
+- **É o mesmo motor, não uma cópia.** Se a tela usasse uma reimplementação da regra,
+  poderia dizer uma coisa e a ligação fazer outra — o pior resultado possível para uma
+  ferramenta de diagnóstico.
+- **Nada é gravado.** A leitura da janela usa `attemptsInWindow` direto, sem o `insert`
+  que o caminho do screening faz. Consultar o próprio app não pode contar como alguém
+  ter ligado.
+
+A tela também mostra as contagens da base local (tentativas, listas, regras, decisões
+registradas, versão do banco) e oferece zerar as contagens — com confirmação, porque
+zerar devolve as chamadas a quem já estava perto do limite.
+
+---
+
+## 16. Bloqueio por biometria
+
+Opcional, desligado por padrão. Quando ligado, o app pede digital, rosto ou a senha do
+aparelho ao voltar para o primeiro plano.
+
+O que ele protege é o que o app acumula: quem ligou, quando, e as suas regras — de quem
+pega o celular **já destravado**. Não há criptografia envolvida e o README não vai
+fingir que há: o banco já está na área privada do app, inacessível a outros aplicativos,
+e uma chave guardada no mesmo aparelho não sustentaria a promessa.
+
+Três decisões de projeto:
+
+1. **A senha do aparelho é sempre aceita** (`BIOMETRIC_WEAK or DEVICE_CREDENTIAL`). Sem
+   isso, um dedo machucado ou um sensor com defeito trancariam o usuário para fora das
+   próprias regras, sem nenhuma forma de desligar o recurso.
+2. **Falha de disponibilidade libera, não tranca.** Se o aparelho deixar de ter qualquer
+   forma de autenticação cadastrada, o app abre. Uma tranca cuja chave deixou de existir
+   não protege nada — só impede o dono de entrar.
+3. **Tolerância de 30 s ao voltar.** Sem ela, cada ida a uma tela do sistema — conceder
+   uma permissão, escolher onde salvar o backup, definir o app como filtro — devolveria
+   o usuário a uma tela de bloqueio.
+
+`BIOMETRIC_WEAK` e não `BIOMETRIC_STRONG` porque não há chave criptográfica presa à
+autenticação: exigir o nível forte reduziria a quantidade de aparelhos onde o recurso
+funciona sem nenhum ganho real de garantia.
+
+É por causa desta tela que `MainActivity` é uma `FragmentActivity` — `BiometricPrompt`
+precisa de um host com `FragmentManager` para sobreviver à recriação da tela durante a
+autenticação. Não há Fragment nenhum na interface.
+
+---
+
+## 17. Exportar e importar as regras
+
+JSON indentado, com os nomes de campo por extenso, gravado onde o usuário escolher pelo
+seletor do sistema (SAF — nenhuma permissão de armazenamento é necessária).
+
+```json
+{
+  "app": "br.dev.callguard.backup",
+  "formatVersion": 1,
+  "settings": { "maxAllowedCalls": 3, "windowMinutes": 15, ... },
+  "schedule": { "enabled": true, "startMinuteOfDay": 1320, ... },
+  "allowlist": [ { "number": "+55...", "label": "Mãe" } ],
+  "blocklist": [ ... ],
+  "customRules": [ ... ]
+}
+```
+
+Legível de propósito: o dono do arquivo consegue conferir o que está levando embora sem
+ferramenta nenhuma. Um arquivo de exportação que o dono não consegue inspecionar é um
+pedido de confiança sem contrapartida.
+
+**A importação substitui, não mescla.** Mesclar parece mais gentil, mas produz um estado
+que ninguém escolheu: um número permitido no aparelho antigo e bloqueado no novo teria
+que virar um dos dois em silêncio. Substituir é previsível — depois de importar, a
+configuração é exatamente a do arquivo — e a tela pede confirmação explícita antes,
+mostrando o resumo do que vai entrar.
+
+**A entrada é tratada como hostil.** É um arquivo qualquer do armazenamento, que pode
+estar truncado, editado à mão ou nem ser nosso:
+
+| Situação | Resultado |
+|---|---|
+| não é JSON | recusa nomeada |
+| é JSON de outro app | recusa nomeada |
+| `formatVersion` maior que a suportada | recusa — abrir arquivo do futuro adivinhando o que mudou é como se perde dado |
+| bloco de ajustes ausente | recusa |
+| entrada de lista sem número | a **entrada** é descartada, não o arquivo |
+| valor fora de faixa | corrigido pelas mesmas rotinas que já protegem a persistência |
+
+Nenhuma exceção vaza para a interface: toda recusa vira uma frase específica.
+
+---
+
+## 18. A abertura do app
+
+Desenhada em `Canvas`, sem imagem, sem Lottie e sem biblioteca de animação. Seis tempos,
+preto e branco, alto contraste, sem gradiente, sem neon, sem 3D:
+
+1. um ponto pulsa no centro — a chamada chegando;
+2. anel após anel sai dele, cada um durando menos que o anterior — a insistência;
+3. um escudo se desenha em volta, do topo para a ponta de baixo, pelos **dois lados ao
+   mesmo tempo** (um escudo que se fecha lê diferente de um escudo que é contornado);
+4. os anéis seguintes desaceleram ao encostar nele e morrem ali — sem explosão, sem X,
+   sem vermelho: o bloqueio do produto também é silencioso;
+5. o escudo se enche de branco de baixo para cima, com menisco, e o telefone dentro dele
+   inverte para preto — o estado *ligado*, dito por forma e não por rótulo;
+6. a marca é revelada por uma cortina da esquerda para a direita, um fio se desenha
+   embaixo dela e a assinatura aparece.
+
+Terminado o sexto tempo, **a cena congela exatamente onde parou** e aparece *"clique em
+qualquer lugar da tela"*, respirando devagar. Nada mais se move. O app não some sozinho:
+sai no toque.
+
+Sobre a fluidez: um único relógio linear comanda a coreografia e cada elemento deriva o
+próprio tempo dele. O progresso é lido **apenas** dentro de `Canvas`, de
+`graphicsLayer { }` e de `drawWithContent { }` — ou seja, nas fases de desenho e de
+layer, nunca na composição. O quadro é refeito sem recompor nada, e a animação acompanha
+a taxa real da tela, 120 Hz onde ela existe. `Path`, `PathMeasure` e a medição do
+contorno do escudo ficam num cache reconstruído só quando o tamanho da tela muda: alocar
+esses objetos a cada quadro geraria lixo suficiente para o coletor causar engasgo
+visível.
+
+Nota: não é possível animar a tela do **instalador** do Android. Esta é a abertura do
+próprio app.
+
+---
+
+## 19. Instalação
 
 ### Abrir no Android Studio
 
@@ -662,7 +963,7 @@ proteção contra spam → CallGuard**.
 
 ---
 
-## 15. Teste real com outro telefone
+## 20. Teste real com outro telefone
 
 Configure primeiro, para não esperar muito:
 
@@ -701,13 +1002,14 @@ adb logcat -s CallGuardScreening
 Saída esperada:
 
 ```
-I CallGuardScreening: Screening decidiu: ALLOW(UNDER_LIMIT)
-I CallGuardScreening: Screening decidiu: BLOCK(CALL_LIMIT_EXCEEDED, tentativas=2)
+I CallGuardScreening: Screening decidiu: ALLOW(UNDER_GLOBAL_LIMIT)
+I CallGuardScreening: Screening decidiu: BLOCK(GLOBAL_LIMIT_EXCEEDED, tentativas=4, regra=GLOBAL)
+I CallGuardScreening: Screening decidiu: BLOCK(PERMANENT_BLOCKLIST, tentativas=0, regra=null)
 ```
 
 ---
 
-## 16. Troubleshooting Samsung
+## 21. Troubleshooting Samsung
 
 ### O serviço não recebe chamada nenhuma
 
@@ -775,42 +1077,54 @@ de bateria (acima) reduz bastante o efeito.
 
 ---
 
-## 17. Estado verificado da build
+## 22. Estado verificado da build
 
 Compilado e testado nesta máquina antes da entrega:
 
 ```
 > Task :app:compileDebugKotlin        (sem erros)
-> Task :app:kspDebugKotlin            (Room gerou os DAOs)
-> Task :app:testDebugUnitTest         56 testes, 0 falhas
+> Task :app:kspDebugKotlin            (Room gerou os DAOs, schema v3 exportado)
+> Task :app:testDebugUnitTest         100 testes, 0 falhas
+> Task :app:lintVitalRelease          (sem erros fatais)
 > Task :app:assembleRelease           (R8 + shrinkResources)
 BUILD SUCCESSFUL
 ```
 
 | Suíte | Testes | Falhas |
 |---|---|---|
-| `InsistentCallPolicyTest` | 22 | 0 |
+| `CallScreeningPolicyTest` | 30 | 0 |
+| `DiagnosticsAssemblerTest` | 14 | 0 |
 | `PhoneOriginTest` | 11 | 0 |
+| `SchedulePolicyTest` | 11 | 0 |
+| `BackupCodecTest` | 11 | 0 |
 | `CallAttemptDaoTest` | 6 | 0 |
 | `CallerIdCodesTest` | 6 | 0 |
 | `BrazilPhoneRulesTest` | 5 | 0 |
 | `PhoneNumberMaskerTest` | 3 | 0 |
 | `ProtectionSettingsTest` | 3 | 0 |
+| **Total** | **100** | **0** |
 
-APK release: ~2,7 MB (com R8). O APK debug fica em ~31 MB por carregar ferramental de
-desenvolvimento — serve para depurar, não para distribuir.
+APK release: **3,6 MB** com R8 (`CallGuard-2.1.0.apk`, versionCode 7). O APK debug fica
+em ~31 MB por carregar ferramental de desenvolvimento — serve para depurar, não para
+distribuir.
 
-Após a minificação, foi conferido que as classes instanciadas pelo sistema **por nome**
-sobreviveram ao R8 (`InsistentCallScreeningService`, `CallGuardApplication`,
-`MainActivity`, `CallGuardDatabase_Impl`). É o risco real de um build minificado: o
+Após a minificação, foi conferido no dex que as classes instanciadas pelo sistema **por
+nome** sobreviveram ao R8: `InsistentCallScreeningService`, `CallGuardApplication`,
+`MainActivity`, `CallGuardDatabase_Impl`. É o risco real de um build minificado — o
 compilador não vê essas referências, elas vêm do manifesto.
 
 Permissões efetivamente presentes no APK (via `aapt2 dump permissions`):
 
 ```
 uses-permission: name='android.permission.READ_CONTACTS'
+uses-permission: name='android.permission.POST_NOTIFICATIONS'
+uses-permission: name='android.permission.CALL_PHONE'
+uses-permission: name='android.permission.USE_BIOMETRIC'
 uses-permission: name='br.dev.callguard.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'
 ```
+
+Sem `INTERNET` e sem `USE_FINGERPRINT` — esta última removida do manifesto mergeado
+porque o `minSdk` 29 nunca a consultaria.
 
 Serviço registrado no manifesto mergeado:
 
@@ -821,14 +1135,19 @@ service br.dev.callguard.screening.InsistentCallScreeningService
 minSdkVersion=29  targetSdkVersion=36
 ```
 
+Assinatura conferida com `apksigner verify --print-certs`: a mesma chave das versões
+anteriores, então o APK instala por cima sem desinstalar nem perder dados.
+
 Versões usadas: AGP 8.13.2, Gradle 8.14.3, Kotlin 2.2.21, KSP 2.2.21-2.0.5,
-Compose BOM 2026.06.01, Room 2.8.4, DataStore 1.2.1, compileSdk/targetSdk 36, JDK 17.
+Compose BOM 2026.06.01, Room 2.8.4, DataStore 1.2.1, biometric 1.1.0,
+compileSdk/targetSdk 36, JDK 17.
 
 O que **não** foi possível verificar aqui, por não haver aparelho: o comportamento em
-tempo de execução no Samsung. Os passos 12 e 13 existem exatamente para isso.
+tempo de execução no Samsung — incluindo o `BiometricPrompt` real e a suavidade da
+abertura em 120 Hz. As seções 20 e 21 existem exatamente para isso.
 
 ---
 
-## 18. Licença e escopo
+## 23. Licença e escopo
 
 Uso pessoal. Todos os dados ficam no aparelho; nada é enviado para lugar nenhum.

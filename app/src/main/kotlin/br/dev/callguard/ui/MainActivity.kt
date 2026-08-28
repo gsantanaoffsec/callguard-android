@@ -4,10 +4,11 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
 import android.telephony.TelephonyManager
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.os.SystemClock
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,14 +20,27 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import br.dev.callguard.core.CallerIdCodes
+import br.dev.callguard.core.DiagnosticFix
 import br.dev.callguard.screening.BlockedCallNotifier
 import br.dev.callguard.ui.theme.CallGuardTheme
 
-class MainActivity : ComponentActivity() {
+/**
+ * `FragmentActivity` e nao `ComponentActivity` por uma exigencia concreta:
+ * `BiometricPrompt` precisa de um host com `FragmentManager` para sobreviver a
+ * recriacao da tela durante a autenticacao. Nao ha Fragment nenhum na interface.
+ */
+class MainActivity : FragmentActivity() {
 
     /** Atualizado por `onNewIntent` quando o app ja esta aberto e a notificacao e tocada. */
     private var pendingOpenBlockedCalls by mutableStateOf(false)
+
+    /** Autenticado nesta ida ao primeiro plano. */
+    private var desbloqueado by mutableStateOf(false)
+
+    /** Momento em que o app saiu da frente, para a tolerancia curta abaixo. */
+    private var saiuEm = 0L
 
     /** Numero aguardando a resposta do pedido de permissao para ligar. */
     private var numeroPendente: String? = null
@@ -62,12 +76,86 @@ class MainActivity : ComponentActivity() {
         runCatching { startActivity(intent) }
     }
 
+    /**
+     * Tolerancia curta ao voltar.
+     *
+     * Sem ela, cada ida a uma tela do sistema -- conceder uma permissao, escolher onde
+     * salvar o backup, definir o app como filtro -- devolveria o usuario a uma tela de
+     * bloqueio. Trinta segundos cobrem esses desvios sem transformar o celular deixado
+     * em cima da mesa em porta aberta.
+     */
+    override fun onStart() {
+        super.onStart()
+        if (desbloqueado && saiuEm > 0L &&
+            SystemClock.elapsedRealtime() - saiuEm > TOLERANCIA_DE_RETORNO_MILLIS
+        ) {
+            desbloqueado = false
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (desbloqueado) saiuEm = SystemClock.elapsedRealtime()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.getBooleanExtra(BlockedCallNotifier.EXTRA_OPEN_BLOCKED_CALLS, false)) {
             pendingOpenBlockedCalls = true
         }
+    }
+
+    /** Pede a autenticacao e traduz a falha em uma frase que o usuario entenda. */
+    private fun pedirDesbloqueio(onOk: () -> Unit, onErro: (String) -> Unit) {
+        BiometricSupport.prompt(
+            activity = this,
+            onSuccess = onOk,
+            onFailure = { desistiu ->
+                onErro(
+                    if (desistiu) {
+                        "Autenticação cancelada. Toque em Desbloquear para tentar de novo."
+                    } else {
+                        "Não foi possível autenticar neste momento. " +
+                            "Você também pode usar a senha do aparelho."
+                    },
+                )
+            },
+        )
+    }
+
+    /** Correcoes do diagnostico que exigem abrir uma tela do sistema. */
+    private fun aplicarCorrecaoDoSistema(
+        correcao: DiagnosticFix,
+        pedirPapel: () -> Unit,
+        pedirContatos: () -> Unit,
+        pedirNotificacoes: () -> Unit,
+    ) {
+        when (correcao) {
+            DiagnosticFix.REQUEST_ROLE -> pedirPapel()
+            DiagnosticFix.GRANT_CONTACTS -> pedirContatos()
+            DiagnosticFix.GRANT_NOTIFICATIONS -> pedirNotificacoes()
+            DiagnosticFix.OPEN_APP_SETTINGS -> abrirAjustesDoApp()
+            // A LISTA de otimizacao, e nao o pedido direto de isencao: este ultimo exige
+            // a permissao REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, que o app nao declara
+            // porque o filtro nao depende dela para funcionar.
+            DiagnosticFix.OPEN_BATTERY_SETTINGS -> abrir(
+                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+            )
+
+            DiagnosticFix.ENABLE_PROTECTION -> Unit
+        }
+    }
+
+    private fun abrirAjustesDoApp() = abrir(
+        Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", packageName, null),
+        ),
+    )
+
+    private fun abrir(intent: Intent) {
+        runCatching { startActivity(intent) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,6 +170,7 @@ class MainActivity : ComponentActivity() {
                 factory = CallGuardViewModel.factory(application),
             )
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            var mostrandoSplash by remember { mutableStateOf(true) }
             var screen by remember {
                 mutableStateOf(
                     if (openBlockedFromNotification) {
@@ -118,6 +207,16 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+            // SAF: o proprio usuario escolhe onde o arquivo nasce e de onde ele vem.
+            // Nenhuma permissao de armazenamento e necessaria por causa disso.
+            val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("application/json"),
+            ) { uri -> if (uri != null) viewModel.exportBackupTo(uri) }
+
+            val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocument(),
+            ) { uri -> if (uri != null) viewModel.stageImportFrom(uri) }
+
             val notificationsPermissionLauncher =
                 androidx.activity.compose.rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission(),
@@ -138,7 +237,68 @@ class MainActivity : ComponentActivity() {
                 onPauseOrDispose { }
             }
 
+            var erroDeBloqueio by remember { mutableStateOf<String?>(null) }
+            val disponibilidadeBiometrica = remember { BiometricSupport.availability(this) }
+            val precisaDesbloquear = uiState.settings.biometricLockEnabled && !desbloqueado
+
             CallGuardTheme {
+                if (mostrandoSplash) {
+                    SplashScreen(onFinished = { mostrandoSplash = false })
+                    return@CallGuardTheme
+                }
+
+                if (precisaDesbloquear) {
+                    androidx.compose.runtime.LaunchedEffect(precisaDesbloquear) {
+                        // Falha na disponibilidade LIBERA. Uma tranca cuja chave deixou de
+                        // existir no aparelho so trancaria o dono do lado de fora.
+                        if (BiometricSupport.availability(this@MainActivity) !=
+                            BiometricAvailability.AVAILABLE
+                        ) {
+                            erroDeBloqueio = null
+                            desbloqueado = true
+                        } else {
+                            pedirDesbloqueio(
+                                onOk = { desbloqueado = true; erroDeBloqueio = null },
+                                onErro = { erroDeBloqueio = it },
+                            )
+                        }
+                    }
+                    LockedScreen(
+                        mensagemDeErro = erroDeBloqueio,
+                        onUnlock = {
+                            pedirDesbloqueio(
+                                onOk = { desbloqueado = true; erroDeBloqueio = null },
+                                onErro = { erroDeBloqueio = it },
+                            )
+                        },
+                    )
+                    return@CallGuardTheme
+                }
+
+                uiState.pendingImport?.let { pendente ->
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = viewModel::cancelImport,
+                        title = { androidx.compose.material3.Text("Substituir suas regras?") },
+                        text = {
+                            androidx.compose.material3.Text(
+                                "O arquivo tem ${pendente.summary()}. Importar SUBSTITUI as " +
+                                    "listas e ajustes atuais deste aparelho. O histórico de " +
+                                    "chamadas não é afetado.",
+                            )
+                        },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(
+                                onClick = viewModel::confirmImport,
+                            ) { androidx.compose.material3.Text("Substituir") }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(
+                                onClick = viewModel::cancelImport,
+                            ) { androidx.compose.material3.Text("Cancelar") }
+                        },
+                    )
+                }
+
                 val barraDeAbas: @Composable () -> Unit = {
                     CallGuardNavigationBar(
                         currentScreen = screen,
@@ -179,6 +339,12 @@ class MainActivity : ComponentActivity() {
                         onAddAllowlistEntry = viewModel::addToAllowlist,
                         onRemoveAllowlistEntry = viewModel::removeFromAllowlist,
                         onOpenBlockedCalls = { screen = CallGuardScreen.BLOCKED_CALLS },
+                        onOpenDiagnostics = {
+                            screen = CallGuardScreen.DIAGNOSTICS
+                            viewModel.refreshDiagnostics()
+                        },
+                        onBiometricLockChange = viewModel::setBiometricLock,
+                        biometricAvailability = disponibilidadeBiometrica,
                         bottomBar = barraDeAbas,
                     )
 
@@ -188,6 +354,16 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = CallGuardScreen.HOME },
                         onClearHistory = viewModel::clearBlockedCalls,
                         onAllowlistNumber = viewModel::allowlistBlockedNumber,
+                        bottomBar = barraDeAbas,
+                    )
+
+                    CallGuardScreen.RULES -> RulesScreen(
+                        uiState = uiState,
+                        onAddBlocklist = viewModel::addToBlocklist,
+                        onRemoveBlocklist = viewModel::removeFromBlocklist,
+                        onAddCustomRule = viewModel::addCustomRule,
+                        onRemoveCustomRule = viewModel::removeCustomRule,
+                        onScheduleChange = { viewModel.setSchedule(it) },
                         bottomBar = barraDeAbas,
                     )
 
@@ -202,6 +378,53 @@ class MainActivity : ComponentActivity() {
                                 callPermissionLauncher.launch(Manifest.permission.CALL_PHONE)
                             }
                         },
+                        bottomBar = barraDeAbas,
+                    )
+
+                    CallGuardScreen.DIAGNOSTICS -> DiagnosticsScreen(
+                        report = uiState.diagnostics,
+                        simulation = uiState.simulation,
+                        backupMessage = uiState.backupMessage,
+                        onBack = { screen = CallGuardScreen.HOME },
+                        onRefresh = viewModel::refreshDiagnostics,
+                        onSimulate = viewModel::simulateNumber,
+                        onClearSimulation = viewModel::clearSimulation,
+                        onFix = { correcao ->
+                            // O ViewModel resolve o que e configuracao; o que abre tela do
+                            // sistema so a Activity pode fazer.
+                            if (!viewModel.applyFix(correcao)) {
+                                aplicarCorrecaoDoSistema(
+                                    correcao = correcao,
+                                    pedirPapel = {
+                                        viewModel.createRoleRequestIntent()
+                                            ?.let(roleLauncher::launch)
+                                    },
+                                    pedirContatos = {
+                                        contactsPermissionLauncher.launch(
+                                            Manifest.permission.READ_CONTACTS,
+                                        )
+                                    },
+                                    pedirNotificacoes = {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                            notificationsPermissionLauncher.launch(
+                                                Manifest.permission.POST_NOTIFICATIONS,
+                                            )
+                                        } else {
+                                            abrirAjustesDoApp()
+                                        }
+                                    },
+                                )
+                            }
+                        },
+                        onExport = { exportLauncher.launch(viewModel.suggestedBackupFileName()) },
+                        onImport = {
+                            // "application/json" sozinho deixa arquivos invisiveis em
+                            // gerenciadores que rotulam .json como text/plain ou octet-stream.
+                            importLauncher.launch(
+                                arrayOf("application/json", "text/plain", "*/*"),
+                            )
+                        },
+                        onClearAttempts = viewModel::clearAttemptHistory,
                         bottomBar = barraDeAbas,
                     )
 
@@ -249,5 +472,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private companion object {
+        /** Janela em que voltar ao app nao pede autenticacao de novo. */
+        const val TOLERANCIA_DE_RETORNO_MILLIS = 30_000L
     }
 }

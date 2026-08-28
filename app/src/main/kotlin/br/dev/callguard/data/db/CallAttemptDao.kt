@@ -37,6 +37,9 @@ abstract class CallAttemptDao {
     @Query("SELECT COUNT(*) FROM call_attempts")
     abstract suspend fun count(): Int
 
+    @Query("SELECT COUNT(DISTINCT normalized_number) FROM call_attempts")
+    abstract suspend fun distinctNumberCount(): Int
+
     /**
      * Le a janela e grava a nova tentativa em UMA transacao.
      *

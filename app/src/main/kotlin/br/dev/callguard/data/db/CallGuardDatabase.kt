@@ -8,6 +8,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
+ * Versao do esquema.
+ *
+ * Constante de arquivo para que a anotacao `@Database` e a tela de diagnostico leiam
+ * exatamente o mesmo numero -- um laudo que informa a versao errada do banco e pior do
+ * que um que nao informa nada.
+ */
+const val DATABASE_VERSION = 3
+
+/**
  * Banco local unico do app. Nunca sai do aparelho.
  *
  * Room foi escolhido para estes tres conjuntos porque todos precisam de consulta
@@ -20,8 +29,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AllowlistEntryEntity::class,
         BlockedCallEntity::class,
         ScreeningEventEntity::class,
+        BlocklistEntryEntity::class,
+        CustomRuleEntity::class,
     ],
-    version = 2,
+    version = DATABASE_VERSION,
     exportSchema = true,
 )
 abstract class CallGuardDatabase : RoomDatabase() {
@@ -34,8 +45,15 @@ abstract class CallGuardDatabase : RoomDatabase() {
 
     abstract fun screeningEventDao(): ScreeningEventDao
 
+    abstract fun blocklistDao(): BlocklistDao
+
+    abstract fun customRuleDao(): CustomRuleDao
+
     companion object {
         private const val DATABASE_NAME = "callguard.db"
+
+        /** Reexposta aqui para quem so tem a referencia da classe. */
+        const val VERSION = DATABASE_VERSION
 
         /**
          * v1 -> v2: tabela do log legivel de decisoes.
@@ -62,11 +80,41 @@ abstract class CallGuardDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v2 -> v3: blocklist e regras personalizadas.
+         *
+         * Migracao de verdade. `fallbackToDestructiveMigration` apagaria a lista de
+         * excecoes e o historico de quem ja usa o app -- dado real do usuario nao se
+         * descarta para encurtar caminho.
+         */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `blocklist_entries` (" +
+                        "`normalized_number` TEXT NOT NULL, " +
+                        "`label` TEXT NOT NULL, " +
+                        "`created_at` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`normalized_number`))",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `custom_rules` (" +
+                        "`normalized_number` TEXT NOT NULL, " +
+                        "`label` TEXT NOT NULL, " +
+                        "`max_allowed_calls` INTEGER NOT NULL, " +
+                        "`window_millis` INTEGER NOT NULL, " +
+                        "`enabled` INTEGER NOT NULL, " +
+                        "`created_at` INTEGER NOT NULL, " +
+                        "`updated_at` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`normalized_number`))",
+                )
+            }
+        }
+
         fun build(context: Context): CallGuardDatabase =
             Room.databaseBuilder(
                 context.applicationContext,
                 CallGuardDatabase::class.java,
                 DATABASE_NAME,
-            ).addMigrations(MIGRATION_1_2).build()
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
     }
 }

@@ -15,6 +15,15 @@ interface AllowlistDao {
     @Query("SELECT normalized_number FROM allowlist_entries")
     suspend fun allNumbers(): List<String>
 
+    @Query("SELECT * FROM allowlist_entries ORDER BY created_at DESC")
+    suspend fun all(): List<AllowlistEntryEntity>
+
+    @Query("SELECT COUNT(*) FROM allowlist_entries")
+    suspend fun count(): Int
+
+    @Query("DELETE FROM allowlist_entries")
+    suspend fun deleteAll()
+
     @Query("SELECT EXISTS(SELECT 1 FROM allowlist_entries WHERE normalized_number = :number)")
     suspend fun contains(number: String): Boolean
 

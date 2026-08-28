@@ -60,6 +60,9 @@ fun HomeScreen(
     onAddAllowlistEntry: (rawNumber: String, label: String) -> Boolean,
     onRemoveAllowlistEntry: (String) -> Unit,
     onOpenBlockedCalls: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
+    onBiometricLockChange: (Boolean) -> Unit,
+    biometricAvailability: BiometricAvailability,
     bottomBar: @Composable () -> Unit,
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
@@ -223,6 +226,67 @@ fun HomeScreen(
             }
 
             item {
+                SectionCard(title = "Segurança") {
+                    SwitchRow(
+                        title = "Exigir biometria para abrir",
+                        subtitle = "Pede sua digital ou a senha do aparelho toda vez que o " +
+                            "app volta para a frente. Protege o histórico de quem pega o " +
+                            "celular já destravado.",
+                        checked = uiState.settings.biometricLockEnabled,
+                        onCheckedChange = onBiometricLockChange,
+                        enabled = biometricAvailability == BiometricAvailability.AVAILABLE ||
+                            uiState.settings.biometricLockEnabled,
+                    )
+                    when (biometricAvailability) {
+                        BiometricAvailability.NONE_ENROLLED -> {
+                            Spacer(Modifier.height(8.dp))
+                            WarningLine(
+                                "Este aparelho ainda não tem digital, rosto ou senha de tela " +
+                                    "cadastrados. Configure um bloqueio de tela para usar isto.",
+                            )
+                        }
+
+                        BiometricAvailability.UNSUPPORTED -> {
+                            Spacer(Modifier.height(8.dp))
+                            WarningLine(
+                                "Este aparelho não oferece biometria nem bloqueio de tela.",
+                            )
+                        }
+
+                        BiometricAvailability.AVAILABLE -> Unit
+                    }
+                }
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onOpenDiagnostics,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Diagnóstico e backup",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                "Ver se a proteção está mesmo funcionando, testar um número " +
+                                    "e salvar suas regras.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+                    }
+                }
+            }
+
+            item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onOpenBlockedCalls,
@@ -348,6 +412,7 @@ private fun SwitchRow(
     subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
@@ -360,7 +425,7 @@ private fun SwitchRow(
             )
         }
         Spacer(Modifier.width(12.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
 }
 

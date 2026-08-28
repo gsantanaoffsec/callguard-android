@@ -14,8 +14,8 @@ android {
         // CallScreeningService + RoleManager.ROLE_CALL_SCREENING existem a partir da API 29.
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 7
+        versionName = "2.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -92,6 +92,9 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     implementation(libs.androidx.datastore.preferences)
+
+    // Traz FragmentActivity junto; e o que BiometricPrompt exige como host.
+    implementation(libs.androidx.biometric)
 
     testImplementation(libs.junit)
     // Room precisa de um Context e de SQLite: Robolectric fornece os dois na JVM, o que

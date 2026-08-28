@@ -10,6 +10,7 @@ captures/
 .cxx/
 *.apk
 *.aab
+*.idsig
 *.keystore
 !debug.keystore
 .kotlin/

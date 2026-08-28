@@ -1,8 +1,14 @@
 package br.dev.callguard.ui
 
+import br.dev.callguard.core.BackupPayload
+import br.dev.callguard.core.DiagnosticsReport
+import br.dev.callguard.core.NumberSimulation
 import br.dev.callguard.core.ProtectionSettings
 import br.dev.callguard.data.db.AllowlistEntryEntity
+import br.dev.callguard.core.SchedulePolicy
 import br.dev.callguard.data.db.BlockedCallEntity
+import br.dev.callguard.data.db.BlocklistEntryEntity
+import br.dev.callguard.data.db.CustomRuleEntity
 import br.dev.callguard.data.db.ScreeningEventEntity
 
 /** Estado unico da tela principal. */
@@ -13,12 +19,28 @@ data class CallGuardUiState(
     val hasReadContactsPermission: Boolean = false,
     val canPostNotifications: Boolean = false,
     val allowlist: List<AllowlistEntryEntity> = emptyList(),
+    val blocklist: List<BlocklistEntryEntity> = emptyList(),
+    val customRules: List<CustomRuleEntity> = emptyList(),
+    val schedule: SchedulePolicy = SchedulePolicy(),
     val blockedCalls: List<BlockedCallEntity> = emptyList(),
     val blockedCallsTotal: Int = 0,
     val screeningEvents: List<ScreeningEventEntity> = emptyList(),
     val logFilePath: String = "",
     /** Mensagem curta apos gerar/abrir o arquivo. Some na proxima acao. */
     val logStatusMessage: String? = null,
+    /** Laudo da central de diagnostico. `null` enquanto ainda esta sendo montado. */
+    val diagnostics: DiagnosticsReport? = null,
+    /** Resultado do ultimo numero testado na central de diagnostico. */
+    val simulation: NumberSimulation? = null,
+    /** Mensagem do fluxo de backup (exportou, falhou, importou). */
+    val backupMessage: String? = null,
+    /**
+     * Backup lido e validado, esperando a confirmacao do usuario.
+     *
+     * A importacao substitui as regras; ela nao pode acontecer no mesmo toque que abriu
+     * o arquivo. Este campo e o que segura o processo entre "li o arquivo" e "aplique".
+     */
+    val pendingImport: BackupPayload? = null,
 ) {
     /** A regra so tem efeito real quando o papel foi concedido e a protecao esta ligada. */
     val isActuallyProtecting: Boolean get() = roleHeld && settings.protectionEnabled
@@ -34,6 +56,12 @@ data class CallGuardUiState(
     /** Numeros ja liberados, para a tela de bloqueios saber o que ja foi tratado. */
     val allowlistedNumbers: Set<String>
         get() = allowlist.map { it.normalizedNumber }.toSet()
+
+    val blocklistedNumbers: Set<String>
+        get() = blocklist.map { it.normalizedNumber }.toSet()
+
+    val numbersWithCustomRule: Set<String>
+        get() = customRules.map { it.normalizedNumber }.toSet()
 }
 
 /**
@@ -41,9 +69,19 @@ data class CallGuardUiState(
  *
  * Um `when` sobre este enum basta; tres telas nao justificam um grafo de navegacao.
  */
-enum class CallGuardScreen(val label: String) {
+enum class CallGuardScreen(val label: String, val inNavBar: Boolean = true) {
     HOME("Proteção"),
     BLOCKED_CALLS("Bloqueadas"),
+    RULES("Regras"),
     ANONYMOUS_CALL("Ligar oculto"),
     LOGS("Logs"),
+
+    /**
+     * Fora da barra de abas de proposito.
+     *
+     * Cinco abas ja e o limite do que uma barra inferior comporta sem virar sopa de
+     * icones. O diagnostico e uma tela que se procura quando algo parece errado, nao um
+     * lugar onde se fica -- entao ele mora atras de um cartao na tela de Proteção.
+     */
+    DIAGNOSTICS("Diagnóstico", inNavBar = false),
 }

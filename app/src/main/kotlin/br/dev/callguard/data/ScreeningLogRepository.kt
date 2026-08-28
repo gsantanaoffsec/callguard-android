@@ -130,13 +130,18 @@ class ScreeningLogRepository(
 
         /** Textos em portugues, para o arquivo nao parecer log de sistema. */
         fun translateReason(reason: String): String = when (reason) {
-            "UNDER_LIMIT" -> "Dentro do limite de chamadas"
-            "CALL_LIMIT_EXCEEDED" -> "Limite de chamadas excedido"
+            "UNDER_GLOBAL_LIMIT" -> "Dentro do limite da regra geral"
+            "UNDER_CUSTOM_LIMIT" -> "Dentro do limite da regra do número"
+            "UNDER_SCHEDULE_LIMIT" -> "Dentro do limite do modo noturno"
+            "GLOBAL_LIMIT_EXCEEDED" -> "Limite da regra geral excedido"
+            "CUSTOM_LIMIT_EXCEEDED" -> "Limite da regra do número excedido"
+            "SCHEDULE_LIMIT_EXCEEDED" -> "Limite do modo noturno excedido"
+            "PERMANENT_BLOCKLIST" -> "Bloqueado permanentemente pelo usuário"
             "PROTECTION_DISABLED" -> "Proteção desligada"
-            "ALLOWLISTED" -> "Número na lista de exceções"
-            "SAVED_CONTACT" -> "Contato salvo na agenda"
+            "ALLOWLISTED" -> "Número na lista de permitidos"
+            "CONTACT_EXEMPT" -> "Contato salvo na agenda"
             "EMERGENCY_NUMBER" -> "Número de emergência"
-            "NUMBER_NOT_AVAILABLE" -> "Número não informado pela operadora"
+            "UNSUPPORTED_CALL" -> "Número não informado pela operadora"
             "NOT_INCOMING" -> "Não é chamada recebida"
             "TIMEOUT_FAILSAFE" -> "Decisão demorou demais; chamada permitida por segurança"
             "ERROR_FAILSAFE" -> "Erro ao decidir; chamada permitida por segurança"

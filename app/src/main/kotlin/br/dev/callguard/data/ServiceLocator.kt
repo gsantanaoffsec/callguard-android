@@ -1,7 +1,7 @@
 package br.dev.callguard.data
 
 import android.content.Context
-import br.dev.callguard.core.InsistentCallPolicy
+import br.dev.callguard.core.CallScreeningPolicy
 import br.dev.callguard.core.PhoneNumberNormalizer
 import br.dev.callguard.data.db.CallGuardDatabase
 import br.dev.callguard.phone.ContactLookup
@@ -30,8 +30,12 @@ object ServiceLocator {
     @Volatile private var roleController: CallScreeningRoleController? = null
     @Volatile private var blockedCallNotifier: BlockedCallNotifier? = null
     @Volatile private var screeningLogRepository: ScreeningLogRepository? = null
+    @Volatile private var blocklistRepository: BlocklistRepository? = null
+    @Volatile private var customRuleRepository: CustomRuleRepository? = null
+    @Volatile private var backupRepository: BackupRepository? = null
+    @Volatile private var diagnosticsRepository: DiagnosticsRepository? = null
 
-    private val policy = InsistentCallPolicy()
+    private val policy = CallScreeningPolicy()
 
     private val lock = Any()
 
@@ -87,5 +91,51 @@ object ServiceLocator {
             ).also { screeningLogRepository = it }
         }
 
-    fun policy(): InsistentCallPolicy = policy
+    fun blocklistRepository(context: Context): BlocklistRepository =
+        blocklistRepository ?: synchronized(lock) {
+            blocklistRepository ?: BlocklistRepository(database(context).blocklistDao())
+                .also { blocklistRepository = it }
+        }
+
+    fun customRuleRepository(context: Context): CustomRuleRepository =
+        customRuleRepository ?: synchronized(lock) {
+            customRuleRepository ?: CustomRuleRepository(database(context).customRuleDao())
+                .also { customRuleRepository = it }
+        }
+
+    fun backupRepository(context: Context): BackupRepository =
+        backupRepository ?: synchronized(lock) {
+            backupRepository ?: BackupRepository(
+                settingsRepository = settingsRepository(context),
+                allowlistDao = database(context).allowlistDao(),
+                blocklistDao = database(context).blocklistDao(),
+                customRuleDao = database(context).customRuleDao(),
+                appVersionName = versionName(context),
+            ).also { backupRepository = it }
+        }
+
+    fun diagnosticsRepository(context: Context): DiagnosticsRepository =
+        diagnosticsRepository ?: synchronized(lock) {
+            diagnosticsRepository ?: DiagnosticsRepository(
+                context = context,
+                database = database(context),
+                settingsRepository = settingsRepository(context),
+                allowlistRepository = allowlistRepository(context),
+                blocklistRepository = blocklistRepository(context),
+                customRuleRepository = customRuleRepository(context),
+                roleController = roleController(context),
+                contactLookup = contactLookup(context),
+                notifier = blockedCallNotifier(context),
+                normalizer = phoneNumberNormalizer(context),
+                policy = policy,
+            ).also { diagnosticsRepository = it }
+        }
+
+    fun policy(): CallScreeningPolicy = policy
+
+    /** Nome da versao instalada, gravado no cabecalho do backup. */
+    private fun versionName(context: Context): String = runCatching {
+        val ctx = context.applicationContext
+        ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName
+    }.getOrNull() ?: "desconhecida"
 }

@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -34,6 +35,7 @@ import br.dev.callguard.core.PolicySource
 import br.dev.callguard.core.ProtectionSettings
 import br.dev.callguard.core.SchedulePolicy
 import br.dev.callguard.ui.design.CgCallout
+import br.dev.callguard.ui.design.cgEnter
 import br.dev.callguard.ui.design.CgChoiceChip
 import br.dev.callguard.ui.design.CgChoiceRow
 import br.dev.callguard.ui.design.CgColor
@@ -90,12 +92,12 @@ fun RulesScreen(
         subtitle = "Exceções que passam na frente da regra geral.",
         bottomBar = bottomBar,
     ) {
-        item("precedencia") { EscadaDePrecedencia() }
+        item("precedencia") { Box(Modifier.cgEnter(1)) { EscadaDePrecedencia() } }
 
         secaoBloqueio(uiState, onRemoveBlocklist) { dialogoBloqueio = true }
         secaoRegrasPorNumero(uiState, onRemoveCustomRule) { dialogoRegra = true }
 
-        item("noturno") { ModoNoturno(uiState.schedule, onScheduleChange) }
+        item("noturno") { Box(Modifier.cgEnter(4)) { ModoNoturno(uiState.schedule, onScheduleChange) } }
     }
 
     if (dialogoBloqueio) {
@@ -180,7 +182,7 @@ private fun LazyListScope.secaoBloqueio(
             key = { i -> "b-${uiState.blocklist[i].normalizedNumber}" },
         ) { indice ->
             val item = uiState.blocklist[indice]
-            Column {
+            Column(Modifier.animateItem()) {
                 CgListItem(
                     title = item.label,
                     subtitle = item.normalizedNumber,
@@ -234,7 +236,7 @@ private fun LazyListScope.secaoRegrasPorNumero(
         ) { indice ->
             val regra = uiState.customRules[indice]
             val politica = CallPolicy(regra.maxAllowedCalls, regra.windowMillis, PolicySource.CUSTOM)
-            Column {
+            Column(Modifier.animateItem()) {
                 CgListItem(
                     title = regra.label,
                     subtitle = regra.normalizedNumber,

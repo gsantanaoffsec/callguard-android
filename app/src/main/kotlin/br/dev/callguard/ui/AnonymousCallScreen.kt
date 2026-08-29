@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import br.dev.callguard.core.CallerIdCodes
 import br.dev.callguard.core.PhoneOrigin
 import br.dev.callguard.ui.design.CgCallout
+import br.dev.callguard.ui.design.cgEnter
 import br.dev.callguard.ui.design.CgColor
 import br.dev.callguard.ui.design.CgGap
 import br.dev.callguard.ui.design.CgNotice
@@ -82,7 +83,7 @@ fun AnonymousCallScreen(
         bottomBar = bottomBar,
     ) {
         item("campo") {
-            Column(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().cgEnter(1)) {
                 CgTextField(
                     value = numeroDigitado,
                     onValueChange = { numeroDigitado = it },
@@ -127,7 +128,7 @@ fun AnonymousCallScreen(
         }
 
         item("aviso") {
-            Column {
+            Column(Modifier.cgEnter(2)) {
                 CgSectionHeader("Antes de ligar")
                 CgCallout(
                     text = "Depende de a operadora ter a ocultação habilitada na linha. " +

@@ -1,5 +1,6 @@
 package br.dev.callguard.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +25,7 @@ import br.dev.callguard.data.ScreeningLogRepository
 import br.dev.callguard.data.db.ScreeningEventEntity
 import br.dev.callguard.ui.design.CgCallout
 import br.dev.callguard.ui.design.CgColor
+import br.dev.callguard.ui.design.cgEnter
 import br.dev.callguard.ui.design.CgDataRow
 import br.dev.callguard.ui.design.CgDialog
 import br.dev.callguard.ui.design.CgDivider
@@ -98,17 +100,19 @@ fun LogsScreen(
     ) {
         if (hasCrashReport) {
             item("falha") {
+                Box(Modifier.cgEnter(1)) {
                 RelatorioDeFalha(
                     caminho = crashReportPath,
                     onAbrir = onOpenCrashReport,
                     onEnviar = onShareCrashReport,
                     onApagar = onClearCrashReport,
                 )
+                }
             }
         }
 
         item("arquivo") {
-            Column(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().cgEnter(1)) {
                 CgSectionHeader(label = "Arquivo no celular", top = true)
                 Text(text = friendlyPath, style = CgType.mono, color = CgColor.TextSecondary)
                 CgGap(CgSpace.md)
@@ -151,12 +155,14 @@ fun LogsScreen(
 
         if (events.isEmpty()) {
             item("vazio") {
+                Box(Modifier.cgEnter(2)) {
                 CgEmptyState(
                     icon = Icons.Outlined.Info,
                     title = "Nenhuma chamada analisada",
                     description = "As decisões aparecem aqui assim que a primeira ligação " +
                         "passar pelo filtro.",
                 )
+                }
             }
             return@CgScreen
         }
@@ -172,7 +178,7 @@ fun LogsScreen(
         }
 
         items(count = events.size, key = { indice -> events[indice].id }) { indice ->
-            Column {
+            Column(Modifier.animateItem().cgEnter(indice + 3)) {
                 EntradaDeRegistro(evento = events[indice], revelar = revelarNumeros)
                 if (indice < events.lastIndex) CgDivider()
             }

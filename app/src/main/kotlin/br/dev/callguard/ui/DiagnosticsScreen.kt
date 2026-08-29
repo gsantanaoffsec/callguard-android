@@ -1,7 +1,14 @@
 package br.dev.callguard.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +39,8 @@ import br.dev.callguard.core.DiagnosticsReport
 import br.dev.callguard.core.NumberSimulation
 import br.dev.callguard.core.ScreeningDecision
 import br.dev.callguard.ui.design.CgColor
+import br.dev.callguard.ui.design.CgMotion
+import br.dev.callguard.ui.design.cgEnter
 import br.dev.callguard.ui.design.CgDataRow
 import br.dev.callguard.ui.design.CgDialog
 import br.dev.callguard.ui.design.CgDivider
@@ -87,7 +97,7 @@ fun DiagnosticsScreen(
                 )
             }
         } else {
-            item("resumo") { ResumoDoLaudo(report) }
+            item("resumo") { Box(Modifier.cgEnter(1)) { ResumoDoLaudo(report) } }
             verificacoes(report.checks, onFix)
             item("teste") {
                 TesteDeNumero(
@@ -173,7 +183,7 @@ private fun LazyListScope.verificacoes(
 ) {
     item("verif-cabecalho") { CgSectionHeader("Verificações") }
     items(count = checks.size, key = { i -> "chk-${checks[i].title}" }) { indice ->
-        Column {
+        Column(Modifier.animateItem().cgEnter(indice + 2)) {
             ItemDeVerificacao(checks[indice], onFix)
             if (indice < checks.lastIndex) CgDivider()
         }
@@ -249,9 +259,25 @@ private fun TesteDeNumero(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        if (simulation != null) {
-            CgGap(CgSpace.xl)
-            ResultadoDaSimulacao(simulation)
+        // O resultado aparece expandindo a partir do botao: e uma resposta ao que a
+        // pessoa acabou de pedir, nao um bloco que sempre esteve ali.
+        // Guarda o ultimo resultado nao nulo: durante a animacao de saida o parametro ja
+        // e null, e sem isto o bloco encolheria vazio em vez de encolher com o conteudo.
+        var ultimoResultado by remember { mutableStateOf<NumberSimulation?>(null) }
+        LaunchedEffect(simulation) {
+            if (simulation != null) ultimoResultado = simulation
+        }
+
+        AnimatedVisibility(
+            visible = simulation != null,
+            enter = expandVertically(tween(CgMotion.slow, easing = CgMotion.decelerate)) +
+                fadeIn(tween(CgMotion.slow)),
+            exit = shrinkVertically(tween(CgMotion.fast)) + fadeOut(tween(CgMotion.fast)),
+        ) {
+            Column {
+                CgGap(CgSpace.xl)
+                ultimoResultado?.let { ResultadoDaSimulacao(it) }
+            }
         }
     }
 }

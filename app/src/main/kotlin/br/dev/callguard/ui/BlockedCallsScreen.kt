@@ -1,6 +1,7 @@
 package br.dev.callguard.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +26,8 @@ import br.dev.callguard.core.PhoneNumberMasker
 import br.dev.callguard.core.PhoneOrigin
 import br.dev.callguard.data.db.BlockedCallEntity
 import br.dev.callguard.ui.design.CgColor
+import br.dev.callguard.ui.design.cgAnimatedCount
+import br.dev.callguard.ui.design.cgEnter
 import br.dev.callguard.ui.design.CgDialog
 import br.dev.callguard.ui.design.CgDivider
 import br.dev.callguard.ui.design.CgEmptyState
@@ -87,19 +90,21 @@ fun BlockedCallsScreen(
     ) {
         if (blockedCalls.isEmpty()) {
             item("vazio") {
+                Box(Modifier.cgEnter(1)) {
                 CgEmptyState(
                     icon = Icons.Outlined.Lock,
                     title = "Nenhuma chamada bloqueada",
                     description = "Quando alguém passar do limite, a ligação aparece aqui.",
                 )
+                }
             }
             return@CgScreen
         }
 
         item("resumo") {
-            Column(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().cgEnter(1)) {
                 CgMetric(
-                    value = blockedCalls.size.toString(),
+                    value = cgAnimatedCount(blockedCalls.size).toString(),
                     label = if (blockedCalls.size == 1) "chamada recusada" else "chamadas recusadas",
                 )
                 CgGap(CgSpace.xxl)
@@ -113,7 +118,9 @@ fun BlockedCallsScreen(
             key = { indice -> blockedCalls[indice].id },
         ) { indice ->
             val bloqueada = blockedCalls[indice]
-            Column {
+            // Ao liberar um numero ou limpar o historico, as linhas se acomodam em vez
+            // de a lista saltar.
+            Column(Modifier.animateItem().cgEnter(indice + 2)) {
                 ItemBloqueado(
                     bloqueada = bloqueada,
                     revelar = revelarNumeros,

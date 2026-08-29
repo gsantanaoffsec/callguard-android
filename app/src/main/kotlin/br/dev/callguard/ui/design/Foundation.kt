@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +58,10 @@ fun CgScreen(
     bottomBar: @Composable () -> Unit = {},
     content: LazyListScope.() -> Unit,
 ) {
+    // A entrada roda uma vez por tela, identificada pelo titulo: trocar de aba refaz o
+    // movimento, rolar a lista nao.
+    val entrada = rememberScreenEntrance(title)
+
     Scaffold(
         modifier = modifier,
         containerColor = CgColor.Background,
@@ -64,6 +69,7 @@ fun CgScreen(
         topBar = { CgTopStrip(onBack = onBack, actions = actions) },
         bottomBar = bottomBar,
     ) { padding ->
+        CompositionLocalProvider(LocalScreenEntrance provides entrada) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -72,7 +78,11 @@ fun CgScreen(
             contentPadding = PaddingValues(bottom = CgSpace.bottom),
         ) {
             item(key = "cg-title") {
-                Column(Modifier.padding(top = CgSpace.md, bottom = CgSpace.xxl)) {
+                Column(
+                    Modifier
+                        .cgEnter()
+                        .padding(top = CgSpace.md, bottom = CgSpace.xxl),
+                ) {
                     Text(text = title, style = CgType.headline, color = CgColor.TextPrimary)
                     if (subtitle != null) {
                         Spacer(Modifier.height(CgSpace.sm))
@@ -85,6 +95,7 @@ fun CgScreen(
                 }
             }
             content()
+        }
         }
     }
 }

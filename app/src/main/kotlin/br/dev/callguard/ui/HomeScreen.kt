@@ -1,5 +1,12 @@
 package br.dev.callguard.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +30,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import br.dev.callguard.core.ProtectionSettings
 import br.dev.callguard.ui.design.CgChoiceRow
+import br.dev.callguard.ui.design.CgMotion
+import br.dev.callguard.ui.design.cgAnimatedCount
+import br.dev.callguard.ui.design.cgEnter
 import br.dev.callguard.ui.design.CgColor
 import br.dev.callguard.ui.design.CgDialog
 import br.dev.callguard.ui.design.CgDivider
@@ -74,9 +84,9 @@ fun HomeScreen(
     var mostrarDialogo by remember { mutableStateOf(false) }
 
     CgScreen(title = "CallGuard", bottomBar = bottomBar) {
-        item("status") { BlocoDeEstado(uiState, onOpenPermissions) }
+        item("status") { Box(Modifier.cgEnter(1)) { BlocoDeEstado(uiState, onOpenPermissions) } }
 
-        item("numeros") { FaixaDeNumeros(uiState) }
+        item("numeros") { Box(Modifier.cgEnter(2)) { FaixaDeNumeros(uiState) } }
 
         secaoRegra(uiState, onMaxCallsChange, onWindowMinutesChange)
 
@@ -174,7 +184,24 @@ private fun BlocoDeEstado(uiState: CallGuardUiState, onOpenPermissions: () -> Un
     }
 
     Column(Modifier.fillMaxWidth()) {
-        CgStatusBlock(active = protegendo, headline = manchete, supporting = apoio)
+        // A manchete muda quando a protecao liga, desliga ou perde a autorizacao.
+        // Trocar o texto de uma vez le como um defeito de renderizacao; a fusao curta
+        // deixa claro que foi o ESTADO que mudou.
+        AnimatedContent(
+            targetState = manchete to apoio,
+            transitionSpec = {
+                (fadeIn(tween(CgMotion.normal, delayMillis = 60)) +
+                    slideInVertically(tween(CgMotion.slow, delayMillis = 60)) { it / 8 })
+                    .togetherWith(fadeOut(tween(CgMotion.fast)))
+            },
+            label = "manchete-estado",
+        ) { (textoManchete, textoApoio) ->
+            CgStatusBlock(
+                active = protegendo,
+                headline = textoManchete,
+                supporting = textoApoio,
+            )
+        }
 
         if (uiState.roleAvailable && !uiState.roleHeld) {
             CgGap(CgSpace.xxl)
@@ -202,7 +229,9 @@ private fun FaixaDeNumeros(uiState: CallGuardUiState) {
         CgDivider()
         Row(Modifier.fillMaxWidth().padding(vertical = CgSpace.xl)) {
             CgMetric(
-                value = uiState.blockedCallsTotal.toString(),
+                // Anda ate o novo valor: um numero que salta e indistinguivel de um erro
+                // de leitura, e este muda enquanto a tela esta aberta.
+                value = cgAnimatedCount(uiState.blockedCallsTotal).toString(),
                 label = "Bloqueadas",
                 valueStyle = CgType.headline,
                 modifier = Modifier.weight(1f),
@@ -360,7 +389,9 @@ private fun LazyListScope.secaoPermitidos(
             key = { indice -> "perm-${uiState.allowlist[indice].normalizedNumber}" },
         ) { indice ->
             val entrada = uiState.allowlist[indice]
-            Column {
+            // `animateItem` faz as linhas de baixo subirem quando uma e removida, em vez
+            // de a lista dar um salto. E o movimento que explica o que aconteceu.
+            Column(Modifier.animateItem()) {
                 CgListItem(
                     title = entrada.label,
                     subtitle = entrada.normalizedNumber,

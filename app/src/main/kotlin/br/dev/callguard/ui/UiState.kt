@@ -91,7 +91,19 @@ data class CallGuardUiState(
  *
  * Um `when` sobre este enum basta; tres telas nao justificam um grafo de navegacao.
  */
-enum class CallGuardScreen(val label: String, val inNavBar: Boolean = true) {
+enum class CallGuardScreen(
+    val label: String,
+    val inNavBar: Boolean = true,
+    /**
+     * Nivel de profundidade na navegacao.
+     *
+     * Decide a DIRECAO da transicao: entrar numa tela mais funda desliza da direita,
+     * voltar desliza da esquerda, e trocar de aba (mesmo nivel) faz uma fusao vertical
+     * curta. Sem isso toda transicao seria igual, e o movimento deixaria de dizer se
+     * voce avancou ou voltou.
+     */
+    val depth: Int = 0,
+) {
     HOME("Proteção"),
     BLOCKED_CALLS("Bloqueadas"),
     RULES("Regras"),
@@ -105,8 +117,8 @@ enum class CallGuardScreen(val label: String, val inNavBar: Boolean = true) {
      * icones. O diagnostico e uma tela que se procura quando algo parece errado, nao um
      * lugar onde se fica -- entao ele mora atras de um cartao na tela de Proteção.
      */
-    DIAGNOSTICS("Diagnóstico", inNavBar = false),
+    DIAGNOSTICS("Diagnóstico", inNavBar = false, depth = 1),
 
     /** Também fora da barra: é uma tela de configuração inicial, não um destino diário. */
-    PERMISSIONS("Permissões", inNavBar = false),
+    PERMISSIONS("Permissões", inNavBar = false, depth = 1),
 }

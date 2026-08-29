@@ -1012,10 +1012,38 @@ dizendo o que a cor diz.
 
 ### Movimento
 
-Curto e sem elasticidade: 120 ms para chips, 200 ms para interruptores e abas, 320 ms
-para a expansão do modo noturno. A única animação contínua é o ponto do estado de
-proteção, e ela existe porque "ativo" é um estado vivo — parado, seria indistinguível de
-um ícone.
+Duas regras valem para tudo em `design/Motion.kt`:
+
+**Toda animação explica alguma coisa.** A entrada de tela diz de onde o conteúdo veio; o
+número contando diz que ele mudou; a linha que desliza ao apagar diz que a lista se
+fechou. Movimento que não responde a *"o que isto está me dizendo?"* é decoração — e
+decoração num app que se abre para resolver um incômodo é atrito.
+
+**O progresso é lido na fase de desenho**, dentro de `graphicsLayer { }`, nunca na
+composição. O quadro é refeito sem recompor nada; é o que permite manter 120 Hz numa
+lista longa em vez de recompor cada linha a cada quadro.
+
+| O que se move | O que diz |
+|---|---|
+| Transição entre telas | direção: entrar numa tela mais funda vem da direita, voltar vem da esquerda, trocar de aba é fusão vertical curta |
+| Entrada da tela | os blocos sobem 16 dp escalonados; roda **uma vez**, então rolar a lista não faz nada piscar |
+| Manchete do estado | quando a proteção liga, desliga ou perde a autorização, o texto funde em vez de trocar seco |
+| Total de bloqueadas | conta até o novo valor; um número que salta é indistinguível de erro de leitura |
+| Itens de lista | `animateItem()` — ao remover, as linhas de baixo sobem em vez de a lista saltar |
+| Botões | cedem 2,5% sob o dedo: o ripple confirma o toque, a escala confirma o alvo |
+| Diálogos | crescem de 94%; surgir em tamanho final lê como salto de quadro |
+| Resultado da simulação | expande a partir do botão — é resposta ao que a pessoa pediu, não um bloco que sempre esteve ali |
+| Etiqueta de permissão | funde ao virar "concedida", confirmando que o pedido funcionou |
+| Ponto do estado | única animação contínua: "ativo" é estado vivo; parado seria indistinguível de um ícone |
+
+Durações: 180 ms para chips, 300 ms para interruptores e abas, 440 ms para expansões e
+entradas. Sem elasticidade e sem bounce em lugar nenhum.
+
+**Movimento reduzido é respeitado de graça.** Quem liga "Remover animações" na
+acessibilidade do Android zera `ANIMATOR_DURATION_SCALE`, e o Compose propaga isso pelo
+`MotionDurationScale` do recompositor: `Animatable` e `animate*AsState` saltam direto
+para o valor final. Nenhum código do app precisa checar essa configuração — mas todo o
+movimento aqui é feito com essas APIs justamente por isso.
 
 ### Acessibilidade
 
@@ -1233,7 +1261,7 @@ BUILD SUCCESSFUL
 | `ProtectionSettingsTest` | 3 | 0 |
 | **Total** | **116** | **0** |
 
-APK release: **3,6 MB** com R8 (`CallGuard-2.3.0.apk`, versionCode 10). O APK debug fica
+APK release: **3,6 MB** com R8 (`CallGuard-2.4.0.apk`, versionCode 11). O APK debug fica
 em ~31 MB por carregar ferramental de desenvolvimento — serve para depurar, não para
 distribuir.
 

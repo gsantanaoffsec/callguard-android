@@ -57,9 +57,13 @@ import androidx.compose.ui.unit.dp
 fun Modifier.cgClickable(
     enabled: Boolean = true,
     role: Role? = Role.Button,
+    // Recebida de fora quando quem chama tambem precisa reagir ao toque -- e o caso dos
+    // botoes, que encolhem sob o dedo. Duas fontes separadas dariam dois estados de
+    // pressao para o mesmo toque.
+    interactionSource: MutableInteractionSource? = null,
     onClick: () -> Unit,
 ): Modifier {
-    val interacao = remember { MutableInteractionSource() }
+    val interacao = interactionSource ?: remember { MutableInteractionSource() }
     return this.clickable(
         interactionSource = interacao,
         indication = ripple(color = CgColor.Inverse.copy(alpha = 0.35f)),
@@ -195,15 +199,19 @@ private fun CgButtonSurface(
     onClick: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    val interacao = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
+            // A escala vem antes do recorte para que a superficie inteira ceda junto,
+            // e nao so o conteudo dentro dela.
+            .cgPressScale(interacao, enabled)
             // Altura MINIMA, nao fixa: com a fonte do sistema ampliada, uma altura fixa
             // corta o rotulo do botao. Crescer e a resposta certa.
             .defaultMinSize(minHeight = CgSize.buttonHeight)
             .clip(shape)
             .background(background)
             .then(if (border != null) Modifier.border(border, shape) else Modifier)
-            .cgClickable(enabled = enabled, onClick = onClick)
+            .cgClickable(enabled = enabled, interactionSource = interacao, onClick = onClick)
             .padding(horizontal = CgSpace.xl),
         contentAlignment = Alignment.Center,
     ) { content() }

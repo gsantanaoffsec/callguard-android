@@ -1,6 +1,11 @@
 package br.dev.callguard.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +23,8 @@ import br.dev.callguard.core.PermissionCatalog
 import br.dev.callguard.core.PermissionDisclosure
 import br.dev.callguard.core.PermissionStatus
 import br.dev.callguard.ui.design.CgCallout
+import br.dev.callguard.ui.design.CgMotion
+import br.dev.callguard.ui.design.cgEnter
 import br.dev.callguard.ui.design.CgColor
 import br.dev.callguard.ui.design.CgDivider
 import br.dev.callguard.ui.design.CgGap
@@ -68,7 +75,7 @@ fun PermissionsScreen(
         bottomBar = bottomBar,
     ) {
         item("acao") {
-            Column(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().cgEnter(1)) {
                 if (pendentes == 0) {
                     CgCallout(
                         text = "Tudo o que o app usa já está concedido.",
@@ -151,7 +158,7 @@ private fun LazyListScope.listaDeItens(
 ) {
     items(count = itens.size, key = { i -> "perm-${itens[i].id.name}" }) { indice ->
         val item = itens[indice]
-        Column {
+        Column(Modifier.cgEnter(indice + 2)) {
             ItemDePermissao(item, statuses[item.id] ?: PermissionStatus.MISSING)
             if (indice < itens.lastIndex) CgDivider()
         }
@@ -169,7 +176,17 @@ private fun ItemDePermissao(item: PermissionDisclosure, status: PermissionStatus
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(CgSpace.md))
-            EtiquetaDeStatus(status, item.essential, item.installTime)
+            // Voltar do dialogo do sistema e ver a etiqueta virar "concedida" com uma
+            // fusao curta e o retorno visual de que o pedido funcionou.
+            AnimatedContent(
+                targetState = status,
+                transitionSpec = {
+                    fadeIn(tween(CgMotion.normal)).togetherWith(fadeOut(tween(CgMotion.fast)))
+                },
+                label = "status-permissao",
+            ) { atual ->
+                EtiquetaDeStatus(atual, item.essential, item.installTime)
+            }
         }
 
         CgGap(CgSpace.sm)

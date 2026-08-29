@@ -25,7 +25,9 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import br.dev.callguard.core.CallerIdCodes
 import br.dev.callguard.core.DiagnosticFix
+import androidx.compose.animation.togetherWith
 import br.dev.callguard.data.ServiceLocator
+import br.dev.callguard.ui.design.CgMotion
 import br.dev.callguard.screening.BlockedCallNotifier
 import br.dev.callguard.ui.theme.CallGuardTheme
 
@@ -345,7 +347,51 @@ class MainActivity : FragmentActivity() {
                     )
                 }
 
-                when (screen) {
+                // Transicao entre telas. A direcao carrega significado: entrar numa
+                // tela mais funda vem da direita, voltar vem da esquerda, e trocar de
+                // aba (mesmo nivel) e uma fusao com um deslocamento vertical curto.
+                // A tela que sai apenas se apaga, sem viajar junto -- duas superficies
+                // deslizando ao mesmo tempo em sentidos opostos e o que faz uma
+                // transicao parecer barulhenta.
+                androidx.compose.animation.AnimatedContent(
+                    targetState = screen,
+                    transitionSpec = {
+                        val avancando = targetState.depth > initialState.depth
+                        val mesmoNivel = targetState.depth == initialState.depth
+                        val entrada = if (mesmoNivel) {
+                            androidx.compose.animation.fadeIn(
+                                androidx.compose.animation.core.tween(
+                                    CgMotion.normal,
+                                    delayMillis = 40,
+                                    easing = CgMotion.decelerate,
+                                ),
+                            ) + androidx.compose.animation.slideInVertically(
+                                androidx.compose.animation.core.tween(
+                                    CgMotion.slow,
+                                    delayMillis = 40,
+                                    easing = CgMotion.decelerate,
+                                ),
+                            ) { altura -> altura / 26 }
+                        } else {
+                            androidx.compose.animation.fadeIn(
+                                androidx.compose.animation.core.tween(CgMotion.normal),
+                            ) + androidx.compose.animation.slideInHorizontally(
+                                androidx.compose.animation.core.tween(
+                                    CgMotion.slow,
+                                    easing = CgMotion.standard,
+                                ),
+                            ) { largura -> if (avancando) largura / 6 else -largura / 6 }
+                        }
+                        entrada togetherWith androidx.compose.animation.fadeOut(
+                            androidx.compose.animation.core.tween(CgMotion.fast),
+                        )
+                    },
+                    label = "troca-de-tela",
+                    // Nome diferente do estado externo de proposito: dentro deste bloco
+                    // le-se a tela que esta sendo desenhada, mas as acoes continuam
+                    // escrevendo no estado da navegacao la fora.
+                ) { telaDesenhada ->
+                when (telaDesenhada) {
                     CallGuardScreen.HOME -> HomeScreen(
                         uiState = uiState,
                         onOpenPermissions = { screen = CallGuardScreen.PERMISSIONS },
@@ -568,6 +614,7 @@ class MainActivity : FragmentActivity() {
                         onClear = viewModel::clearLogs,
                         bottomBar = barraDeAbas,
                     )
+                }
                 }
             }
         }

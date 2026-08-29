@@ -1,7 +1,13 @@
 package br.dev.callguard.ui.design
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
@@ -35,10 +41,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlin.math.PI
+import kotlin.math.sin
 
 /**
  * Casca de tela do CallGuard.
@@ -53,6 +63,12 @@ fun CgScreen(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    /**
+     * Desenho ao lado do titulo. So a tela inicial usa: a marca identifica o APP, e
+     * repeti-la ao lado de "Regras" ou "Bloqueadas" a transformaria em enfeite de
+     * cabecalho.
+     */
+    leading: (@Composable () -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
@@ -83,7 +99,13 @@ fun CgScreen(
                         .cgEnter()
                         .padding(top = CgSpace.md, bottom = CgSpace.xxl),
                 ) {
-                    Text(text = title, style = CgType.headline, color = CgColor.TextPrimary)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (leading != null) {
+                            leading()
+                            Spacer(Modifier.width(CgSpace.md))
+                        }
+                        Text(text = title, style = CgType.headline, color = CgColor.TextPrimary)
+                    }
                     if (subtitle != null) {
                         Spacer(Modifier.height(CgSpace.sm))
                         Text(
@@ -321,22 +343,11 @@ fun CgStatusBlock(
     supporting: String,
     modifier: Modifier = Modifier,
 ) {
-    val alvo = if (active) 1f else 0.55f
-    val brilho by animateFloatAsState(
-        targetValue = alvo,
-        animationSpec = tween(CgMotion.slow, easing = CgMotion.standard),
-        label = "brilho-status",
-    )
     val cor = if (active) CgColor.Positive else CgColor.Negative
 
     Column(modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .background(cor.copy(alpha = brilho)),
-            )
+            SinalDeEstado(active = active, color = cor)
             Spacer(Modifier.width(CgSpace.md))
             Text(
                 text = if (active) "PROTEGIDO" else "SEM PROTEÇÃO",
@@ -348,6 +359,69 @@ fun CgStatusBlock(
         Text(text = headline, style = CgType.display, color = CgColor.TextPrimary)
         Spacer(Modifier.height(CgSpace.md))
         Text(text = supporting, style = CgType.body, color = CgColor.TextSecondary)
+    }
+}
+
+/**
+ * O sinal de "protegido": um ponto que respira e emite ondas.
+ *
+ * A metáfora é a do produto — o app existe porque ondas saem de um telefone insistindo.
+ * Aqui elas saem do sinal em ritmo calmo, o oposto da insistência: é assim que se mostra
+ * que algo está vivo e em guarda sem escrever "vivo e em guarda".
+ *
+ * Só pulsa quando está protegendo. Sem proteção o ponto fica **parado**, e isso é
+ * proposital: a ausência de movimento é a diferença mais rápida de perceber com o
+ * canto do olho, e não depende de distinguir verde de vermelho.
+ *
+ * As ondas passam de 5 dp para ~21 dp de raio, extrapolando os limites do `Canvas` de
+ * 10 dp. Isso é intencional e não é um erro de layout: o Compose não recorta o desenho
+ * às bordas a menos que se peça, então as ondas transbordam sem que a linha inteira
+ * precise reservar 42 dp de largura e empurrar o texto para o lado.
+ */
+@Composable
+private fun SinalDeEstado(active: Boolean, color: Color) {
+    if (!active) {
+        Box(
+            Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(color),
+        )
+        return
+    }
+
+    val transicao = rememberInfiniteTransition(label = "sinal")
+    val fase by transicao.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "fase-sinal",
+    )
+
+    Canvas(Modifier.size(10.dp)) {
+        val centro = Offset(size.width / 2f, size.height / 2f)
+        val raioPonto = size.minDimension / 2f
+
+        // Três ondas defasadas: sempre há uma nascendo enquanto outra morre, o que
+        // torna o ciclo contínuo em vez de pulsar em blocos.
+        repeat(3) { indice ->
+            val p = (fase + indice / 3f) % 1f
+            // Desacelera ao se afastar, como onda perdendo energia.
+            val avanco = 1f - (1f - p) * (1f - p)
+            drawCircle(
+                color = color.copy(alpha = (1f - p) * 0.5f),
+                radius = raioPonto + raioPonto * 3.2f * avanco,
+                center = centro,
+                style = Stroke(width = 1.4.dp.toPx()),
+            )
+        }
+
+        // O ponto respira junto, discretamente.
+        val respiro = 1f + 0.09f * sin(fase * 2f * PI.toFloat())
+        drawCircle(color = color, radius = raioPonto * respiro, center = centro)
     }
 }
 

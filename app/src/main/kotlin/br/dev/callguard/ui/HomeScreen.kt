@@ -29,7 +29,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import br.dev.callguard.core.ProtectionSettings
+import androidx.compose.ui.unit.dp
 import br.dev.callguard.ui.design.CgChoiceRow
+import br.dev.callguard.ui.design.CgLogoMark
+import br.dev.callguard.ui.design.LocalScreenEntrance
 import br.dev.callguard.ui.design.CgMotion
 import br.dev.callguard.ui.design.cgAnimatedCount
 import br.dev.callguard.ui.design.cgEnter
@@ -83,7 +86,16 @@ fun HomeScreen(
 ) {
     var mostrarDialogo by remember { mutableStateOf(false) }
 
-    CgScreen(title = "CallGuard", bottomBar = bottomBar) {
+    CgScreen(
+        title = "CallGuard",
+        // A marca se monta junto com a entrada da tela: o contorno do escudo se fecha e
+        // o branco sobe, os mesmos dois tempos da abertura do app, em miniatura.
+        leading = {
+            val entrada = LocalScreenEntrance.current
+            CgLogoMark(size = 30.dp, progress = { entrada.value })
+        },
+        bottomBar = bottomBar,
+    ) {
         item("status") { Box(Modifier.cgEnter(1)) { BlocoDeEstado(uiState, onOpenPermissions) } }
 
         item("numeros") { Box(Modifier.cgEnter(2)) { FaixaDeNumeros(uiState) } }

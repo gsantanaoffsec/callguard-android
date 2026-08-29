@@ -1034,10 +1034,22 @@ lista longa em vez de recompor cada linha a cada quadro.
 | Diálogos | crescem de 94%; surgir em tamanho final lê como salto de quadro |
 | Resultado da simulação | expande a partir do botão — é resposta ao que a pessoa pediu, não um bloco que sempre esteve ali |
 | Etiqueta de permissão | funde ao virar "concedida", confirmando que o pedido funcionou |
-| Ponto do estado | única animação contínua: "ativo" é estado vivo; parado seria indistinguível de um ícone |
+| Marca no cabeçalho | o escudo se fecha e o branco sobe junto com a entrada da tela — os dois tempos da abertura, em miniatura |
+| Sinal de protegido | ondas verdes saem do ponto em ritmo calmo: a mesma metáfora do produto, invertida. Só pulsa protegendo; **parado** é o estado sem proteção, e ausência de movimento se percebe com o canto do olho sem depender de cor |
 
 Durações: 180 ms para chips, 300 ms para interruptores e abas, 440 ms para expansões e
 entradas. Sem elasticidade e sem bounce em lugar nenhum.
+
+**A marca é desenhada, não importada.** `design/LogoMark.kt` desenha o escudo com o
+telefone recortado em `Canvas` — a mesma silhueta do ícone do launcher e do quadro final
+da abertura. Repetir a forma em três lugares é o que faz o app ser reconhecido antes de o
+nome ser lido; e, sendo desenho e não recurso, ela acompanha a cor do tema e pode ser
+animada por progresso.
+
+Um detalhe de layout que parece bug e não é: as ondas do sinal vão de 5 dp a ~21 dp de
+raio a partir de um `Canvas` de 10 dp. O Compose não recorta o desenho às bordas do
+layout a menos que se peça, então elas transbordam de propósito — do contrário a linha
+inteira teria que reservar 42 dp de largura e empurraria o texto para o lado.
 
 **Movimento reduzido é respeitado de graça.** Quem liga "Remover animações" na
 acessibilidade do Android zera `ANIMATOR_DURATION_SCALE`, e o Compose propaga isso pelo
@@ -1239,7 +1251,7 @@ Compilado e testado nesta máquina antes da entrega:
 ```
 > Task :app:compileDebugKotlin        (sem erros)
 > Task :app:kspDebugKotlin            (Room gerou os DAOs, schema v3 exportado)
-> Task :app:testDebugUnitTest         116 testes, 0 falhas
+> Task :app:testDebugUnitTest         118 testes, 0 falhas
 > Task :app:lintVitalRelease          (sem erros fatais)
 > Task :app:assembleRelease           (R8 + shrinkResources)
 BUILD SUCCESSFUL
@@ -1254,14 +1266,14 @@ BUILD SUCCESSFUL
 | `BackupCodecTest` | 11 | 0 |
 | `CallAttemptDaoTest` | 6 | 0 |
 | `PermissionCatalogTest` | 11 | 0 |
-| `HomeScreenInteractionTest` | 5 | 0 |
+| `HomeScreenInteractionTest` | 7 | 0 |
 | `CallerIdCodesTest` | 6 | 0 |
 | `BrazilPhoneRulesTest` | 5 | 0 |
 | `PhoneNumberMaskerTest` | 3 | 0 |
 | `ProtectionSettingsTest` | 3 | 0 |
-| **Total** | **116** | **0** |
+| **Total** | **118** | **0** |
 
-APK release: **3,6 MB** com R8 (`CallGuard-2.4.0.apk`, versionCode 11). O APK debug fica
+APK release: **3,6 MB** com R8 (`CallGuard-2.4.1.apk`, versionCode 12). O APK debug fica
 em ~31 MB por carregar ferramental de desenvolvimento — serve para depurar, não para
 distribuir.
 

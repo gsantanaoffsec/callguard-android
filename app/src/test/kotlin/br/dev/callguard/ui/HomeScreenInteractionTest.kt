@@ -172,4 +172,31 @@ class HomeScreenInteractionTest {
         compose.onAllNodes(condicao).onFirst().performClick()
         compose.waitForIdle()
     }
+
+    /**
+     * O sinal de "protegido" tem uma animacao INFINITA (as ondas verdes).
+     *
+     * Isso e uma armadilha conhecida em teste de Compose: uma animacao que nunca termina
+     * pode deixar a arvore permanentemente ocupada e travar qualquer espera automatica.
+     * Este teste existe para que, se alguem trocar a implementacao do sinal por uma que
+     * prenda o relogio, a suite acuse em vez de a tela ficar sem resposta no aparelho.
+     */
+    @Test
+    fun `a tela continua respondendo com o sinal de protegido animando`() {
+        montar(estadoInicial = CallGuardUiState(roleHeld = true))
+
+        compose.onNodeWithText("Chamadas insistentes são recusadas.").assertExists()
+        // Interagir DEPOIS da animacao ter comecado: e o que provaria o travamento.
+        compose.onNodeWithText("Bloquear chamadas insistentes").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("CallGuard").assertExists()
+    }
+
+    /** Sem protecao o sinal fica parado; a tela precisa montar igualmente. */
+    @Test
+    fun `a tela monta com o sinal parado quando nao ha protecao`() {
+        montar(estadoInicial = CallGuardUiState(roleHeld = false))
+        compose.onNodeWithText("Falta a sua autorização.").assertExists()
+        compose.onNodeWithText("Configurar permissões").assertExists()
+    }
 }

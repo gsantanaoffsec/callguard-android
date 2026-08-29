@@ -57,7 +57,7 @@ import br.dev.callguard.ui.design.CgType
 @Composable
 fun HomeScreen(
     uiState: CallGuardUiState,
-    onRequestRole: () -> Unit,
+    onOpenPermissions: () -> Unit,
     onProtectionChange: (Boolean) -> Unit,
     onMaxCallsChange: (Int) -> Unit,
     onWindowMinutesChange: (Int) -> Unit,
@@ -74,7 +74,7 @@ fun HomeScreen(
     var mostrarDialogo by remember { mutableStateOf(false) }
 
     CgScreen(title = "CallGuard", bottomBar = bottomBar) {
-        item("status") { BlocoDeEstado(uiState, onRequestRole) }
+        item("status") { BlocoDeEstado(uiState, onOpenPermissions) }
 
         item("numeros") { FaixaDeNumeros(uiState) }
 
@@ -105,6 +105,20 @@ fun HomeScreen(
             )
         }
         item("mais-divisor") { CgDivider() }
+        item("mais-permissoes") {
+            CgNavRow(
+                title = "Permissões",
+                subtitle = "O que o app usa, por que, e o que ele nunca pede",
+                value = if (uiState.pendingPermissions > 0) {
+                    "${uiState.pendingPermissions} pendente" +
+                        if (uiState.pendingPermissions > 1) "s" else ""
+                } else {
+                    null
+                },
+                onClick = onOpenPermissions,
+            )
+        }
+        item("mais-divisor2") { CgDivider() }
         item("mais-diagnostico") {
             CgNavRow(
                 title = "Diagnóstico e backup",
@@ -134,7 +148,7 @@ fun HomeScreen(
  * é o único lugar em que ela é urgente.
  */
 @Composable
-private fun BlocoDeEstado(uiState: CallGuardUiState, onRequestRole: () -> Unit) {
+private fun BlocoDeEstado(uiState: CallGuardUiState, onOpenPermissions: () -> Unit) {
     val protegendo = uiState.isActuallyProtecting
 
     val (manchete, apoio) = when {
@@ -164,9 +178,12 @@ private fun BlocoDeEstado(uiState: CallGuardUiState, onRequestRole: () -> Unit) 
 
         if (uiState.roleAvailable && !uiState.roleHeld) {
             CgGap(CgSpace.xxl)
+            // Leva para a tela de permissões em vez de abrir o diálogo do sistema direto:
+            // quem chega aqui na primeira vez merece ler o que vai ser pedido antes de o
+            // primeiro diálogo aparecer.
             CgPrimaryButton(
-                text = "Definir como filtro de chamadas",
-                onClick = onRequestRole,
+                text = "Configurar permissões",
+                onClick = onOpenPermissions,
                 modifier = Modifier.fillMaxWidth(),
             )
         }

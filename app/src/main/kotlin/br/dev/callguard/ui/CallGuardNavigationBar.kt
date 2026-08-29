@@ -175,4 +175,5 @@ private val CallGuardScreen.icon: ImageVector
         CallGuardScreen.ANONYMOUS_CALL -> Icons.Outlined.Call
         CallGuardScreen.LOGS -> Icons.Outlined.Settings
         CallGuardScreen.DIAGNOSTICS -> Icons.Outlined.Info
+        CallGuardScreen.PERMISSIONS -> Icons.Outlined.Lock
     }

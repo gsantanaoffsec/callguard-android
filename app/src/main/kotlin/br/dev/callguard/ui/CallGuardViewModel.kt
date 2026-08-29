@@ -6,7 +6,13 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import androidx.core.content.ContextCompat
+import br.dev.callguard.core.AppPermission
+import br.dev.callguard.core.PermissionCatalog
+import br.dev.callguard.core.PermissionStatus
 import br.dev.callguard.core.BackupPayload
 import br.dev.callguard.core.DiagnosticFix
 import br.dev.callguard.core.SchedulePolicy
@@ -137,8 +143,48 @@ class CallGuardViewModel(
                 roleHeld = roleController.isRoleHeld(),
                 hasReadContactsPermission = contactLookup.hasReadContactsPermission(),
                 canPostNotifications = blockedCallNotifier.canNotify(),
+                permissionStatuses = permissionStatuses(),
             )
         }
+    }
+
+    /**
+     * Situacao de cada autorizacao neste aparelho.
+     *
+     * Consultado junto com o resto do estado do sistema, no `ON_RESUME`: permissao e
+     * papel mudam em telas do sistema, entao nao ha `Flow` que os observe.
+     */
+    private fun permissionStatuses(): Map<AppPermission, PermissionStatus> {
+        val contexto = getApplication<Application>()
+
+        fun concedida(nome: String): PermissionStatus =
+            if (
+                ContextCompat.checkSelfPermission(contexto, nome) ==
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                PermissionStatus.GRANTED
+            } else {
+                PermissionStatus.MISSING
+            }
+
+        return mapOf(
+            AppPermission.CALL_SCREENING_ROLE to when {
+                !roleController.isRoleAvailable() -> PermissionStatus.NOT_APPLICABLE
+                roleController.isRoleHeld() -> PermissionStatus.GRANTED
+                else -> PermissionStatus.MISSING
+            },
+            AppPermission.READ_CONTACTS to concedida(PermissionCatalog.READ_CONTACTS),
+            AppPermission.POST_NOTIFICATIONS to
+                if (Build.VERSION.SDK_INT < PermissionCatalog.SDK_NOTIFICATIONS) {
+                    // Abaixo do Android 13 notificar nao exige permissao alguma.
+                    PermissionStatus.NOT_APPLICABLE
+                } else {
+                    concedida(PermissionCatalog.POST_NOTIFICATIONS)
+                },
+            AppPermission.CALL_PHONE to concedida(PermissionCatalog.CALL_PHONE),
+            // Permissao normal: concedida na instalacao, sem dialogo.
+            AppPermission.BIOMETRIC to PermissionStatus.GRANTED,
+        )
     }
 
     fun createRoleRequestIntent() = roleController.createRequestRoleIntent()

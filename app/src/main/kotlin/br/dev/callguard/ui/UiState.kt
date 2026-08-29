@@ -1,6 +1,8 @@
 package br.dev.callguard.ui
 
+import br.dev.callguard.core.AppPermission
 import br.dev.callguard.core.BackupPayload
+import br.dev.callguard.core.PermissionStatus
 import br.dev.callguard.core.DiagnosticsReport
 import br.dev.callguard.core.NumberSimulation
 import br.dev.callguard.core.ProtectionSettings
@@ -34,6 +36,8 @@ data class CallGuardUiState(
      * Aparece na aba de registro quando verdadeiro. Sem rede, esta e a unica forma de um
      * problema no aparelho de quem usa chegar a quem mantem o codigo.
      */
+    /** Situacao de cada autorizacao, para a tela de permissoes e o botao de conceder. */
+    val permissionStatuses: Map<AppPermission, PermissionStatus> = emptyMap(),
     val hasCrashReport: Boolean = false,
     /** Caminho legivel do arquivo de falhas, mostrado ao lado do aviso. */
     val crashReportPath: String = "",
@@ -61,6 +65,15 @@ data class CallGuardUiState(
     /** Avisos ligados, mas sem permissao para notificar: os bloqueios passariam despercebidos. */
     val notificationsNeedPermission: Boolean
         get() = settings.notifyOnBlock && !canPostNotifications
+
+    /**
+     * Quantas autorizacoes ainda faltam.
+     *
+     * Mostrado na tela inicial para que a pendencia seja visivel sem precisar abrir a
+     * tela de permissoes -- do contrario, uma permissao recusada some da vista.
+     */
+    val pendingPermissions: Int
+        get() = permissionStatuses.count { it.value == PermissionStatus.MISSING }
 
     /** Numeros ja liberados, para a tela de bloqueios saber o que ja foi tratado. */
     val allowlistedNumbers: Set<String>
@@ -93,4 +106,7 @@ enum class CallGuardScreen(val label: String, val inNavBar: Boolean = true) {
      * lugar onde se fica -- entao ele mora atras de um cartao na tela de Proteção.
      */
     DIAGNOSTICS("Diagnóstico", inNavBar = false),
+
+    /** Também fora da barra: é uma tela de configuração inicial, não um destino diário. */
+    PERMISSIONS("Permissões", inNavBar = false),
 }

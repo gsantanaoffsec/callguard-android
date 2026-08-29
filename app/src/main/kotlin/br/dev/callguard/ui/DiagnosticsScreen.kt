@@ -1,6 +1,7 @@
 package br.dev.callguard.ui
 
 import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -69,6 +70,10 @@ fun DiagnosticsScreen(
     onClearAttempts: () -> Unit,
     bottomBar: @Composable () -> Unit,
 ) {
+    // Sem isto o gesto de voltar sairia do app: esta tela nao tem aba propria, entao o
+    // caminho de volta e a tela inicial.
+    BackHandler(onBack = onBack)
+
     var numeroDeTeste by remember { mutableStateOf("") }
     var confirmandoLimpeza by remember { mutableStateOf(false) }
 

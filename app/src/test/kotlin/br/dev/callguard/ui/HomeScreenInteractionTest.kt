@@ -42,7 +42,7 @@ class HomeScreenInteractionTest {
             CallGuardTheme {
                 HomeScreen(
                     uiState = estadoInicial,
-                    onRequestRole = {},
+                    onOpenPermissions = {},
                     onProtectionChange = {},
                     onMaxCallsChange = {},
                     onWindowMinutesChange = {},
@@ -111,7 +111,7 @@ class HomeScreenInteractionTest {
             CallGuardTheme {
                 HomeScreen(
                     uiState = atual,
-                    onRequestRole = {},
+                    onOpenPermissions = {},
                     onProtectionChange = {},
                     onMaxCallsChange = {},
                     onWindowMinutesChange = {},

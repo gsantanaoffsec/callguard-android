@@ -517,6 +517,36 @@ Se o usuário conceder a permissão para o Modo 2 e depois voltar ao Modo 1 sem 
 as chamadas de contatos continuam chegando — e aí `ContactLookup` as deixa passar
 explicitamente. É o único caso em que consultamos a agenda.
 
+### A tela de Permissões
+
+Cada permissão continua sendo pedida no primeiro uso real do recurso — esse é o padrão do
+app e é o comportamento correto. Mas quem quer configurar tudo de uma vez tinha que
+descobrir onde cada uma morava. A tela **Permissões** (tela inicial → Mais → Permissões,
+e o botão do bloco de estado quando falta o papel) resolve isso.
+
+Ela é, antes de tudo, a **divulgação prévia**: cada item diz para que serve e **o que se
+perde ao recusar**, antes de qualquer diálogo aparecer. Uma tela de permissões que só
+lista benefícios é propaganda; saber o que se perde é o que torna a escolha informada — e
+aqui só o papel de filtro é indispensável.
+
+Depois da explicação, um botão pede tudo o que falta. Duas coisas que ele **não** faz, e
+que a tela não esconde:
+
+- **Não concede nada.** Nenhum aplicativo Android concede permissões a si mesmo. O botão
+  dispara os diálogos oficiais do sistema em sequência (`RequestMultiplePermissions`), e
+  quem concede continua sendo o dono do aparelho, item por item.
+- **Não liga a regra para contatos.** Conceder o acesso à agenda apenas torna a opção
+  possível; ligá-la continua sendo o interruptor da tela inicial. Permissão concedida não
+  é comportamento mudado.
+
+O papel de filtro fica fora do lote de propósito: ele não é uma permissão, tem um `Intent`
+próprio (`RoleManager.createRequestRoleIntent`) e é pedido logo em seguida, quando a
+sequência de diálogos termina. Colocá-lo no lote faria o pedido inteiro falhar.
+
+A tela também lista **o que o app nunca pede** — internet, registro de chamadas,
+microfone, câmera, localização, armazenamento, ser discador padrão. Uma lista do que se
+quer sem a lista do que não se quer não deixa ninguém julgar se o pedido é proporcional.
+
 **Permissões deliberadamente NÃO pedidas:** `READ_CALL_LOG` (a API de screening já
 entrega o necessário), `READ_PHONE_STATE`, `ANSWER_PHONE_CALLS`, `INTERNET`,
 `RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE`,
@@ -1181,7 +1211,7 @@ Compilado e testado nesta máquina antes da entrega:
 ```
 > Task :app:compileDebugKotlin        (sem erros)
 > Task :app:kspDebugKotlin            (Room gerou os DAOs, schema v3 exportado)
-> Task :app:testDebugUnitTest         105 testes, 0 falhas
+> Task :app:testDebugUnitTest         116 testes, 0 falhas
 > Task :app:lintVitalRelease          (sem erros fatais)
 > Task :app:assembleRelease           (R8 + shrinkResources)
 BUILD SUCCESSFUL
@@ -1195,14 +1225,15 @@ BUILD SUCCESSFUL
 | `SchedulePolicyTest` | 11 | 0 |
 | `BackupCodecTest` | 11 | 0 |
 | `CallAttemptDaoTest` | 6 | 0 |
+| `PermissionCatalogTest` | 11 | 0 |
 | `HomeScreenInteractionTest` | 5 | 0 |
 | `CallerIdCodesTest` | 6 | 0 |
 | `BrazilPhoneRulesTest` | 5 | 0 |
 | `PhoneNumberMaskerTest` | 3 | 0 |
 | `ProtectionSettingsTest` | 3 | 0 |
-| **Total** | **105** | **0** |
+| **Total** | **116** | **0** |
 
-APK release: **3,6 MB** com R8 (`CallGuard-2.2.1.apk`, versionCode 9). O APK debug fica
+APK release: **3,6 MB** com R8 (`CallGuard-2.3.0.apk`, versionCode 10). O APK debug fica
 em ~31 MB por carregar ferramental de desenvolvimento — serve para depurar, não para
 distribuir.
 

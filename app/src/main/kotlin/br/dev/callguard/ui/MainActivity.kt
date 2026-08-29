@@ -246,6 +246,26 @@ class MainActivity : FragmentActivity() {
                 ActivityResultContracts.OpenDocument(),
             ) { uri -> if (uri != null) viewModel.stageImportFrom(uri) }
 
+            // Um pedido em lote: o Android encadeia os dialogos sozinho. Terminada a
+            // sequencia, o papel de filtro e pedido em seguida -- ele nao e uma permissao
+            // e tem um Intent proprio, entao nao pode entrar no mesmo lote.
+            val batchPermissionLauncher =
+                androidx.activity.compose.rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestMultiplePermissions(),
+                ) {
+                    viewModel.refreshSystemState()
+                    if (!viewModel.uiState.value.roleHeld) {
+                        val pedido = viewModel.createRoleRequestIntent()
+                        if (pedido != null) {
+                            runCatching { roleLauncher.launch(pedido) }.onFailure { erro ->
+                                ServiceLocator.crashReporter(this@MainActivity)
+                                    .recordHandled(erro, "pedido do papel apos o lote")
+                                abrirAjustesDoApp()
+                            }
+                        }
+                    }
+                }
+
             val notificationsPermissionLauncher =
                 androidx.activity.compose.rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission(),
@@ -328,16 +348,7 @@ class MainActivity : FragmentActivity() {
                 when (screen) {
                     CallGuardScreen.HOME -> HomeScreen(
                         uiState = uiState,
-                        onRequestRole = {
-                            val pedido = viewModel.createRoleRequestIntent()
-                            if (pedido != null) {
-                                runCatching { roleLauncher.launch(pedido) }.onFailure { erro ->
-                                    ServiceLocator.crashReporter(this@MainActivity)
-                                        .recordHandled(erro, "pedido do papel de filtro")
-                                    abrirAjustesDoApp()
-                                }
-                            }
-                        },
+                        onOpenPermissions = { screen = CallGuardScreen.PERMISSIONS },
                         onProtectionChange = viewModel::setProtectionEnabled,
                         onMaxCallsChange = viewModel::setMaxAllowedCalls,
                         onWindowMinutesChange = viewModel::setWindowMinutes,
@@ -460,6 +471,36 @@ class MainActivity : FragmentActivity() {
                             )
                         },
                         onClearAttempts = viewModel::clearAttemptHistory,
+                        bottomBar = barraDeAbas,
+                    )
+
+                    CallGuardScreen.PERMISSIONS -> PermissionsScreen(
+                        statuses = uiState.permissionStatuses,
+                        sdkInt = Build.VERSION.SDK_INT,
+                        onBack = { screen = CallGuardScreen.HOME },
+                        onGrantAll = {
+                            val pedidos = br.dev.callguard.core.PermissionCatalog
+                                .runtimePermissionsToRequest(
+                                    statuses = uiState.permissionStatuses,
+                                    sdkInt = Build.VERSION.SDK_INT,
+                                )
+                            if (pedidos.isNotEmpty()) {
+                                runCatching {
+                                    batchPermissionLauncher.launch(pedidos.toTypedArray())
+                                }.onFailure { erro ->
+                                    ServiceLocator.crashReporter(this@MainActivity)
+                                        .recordHandled(erro, "pedido de permissoes em lote")
+                                    abrirAjustesDoApp()
+                                }
+                            } else {
+                                // So falta o papel: vai direto para o dialogo dele.
+                                val pedido = viewModel.createRoleRequestIntent()
+                                if (pedido != null) {
+                                    runCatching { roleLauncher.launch(pedido) }
+                                        .onFailure { abrirAjustesDoApp() }
+                                }
+                            }
+                        },
                         bottomBar = barraDeAbas,
                     )
 

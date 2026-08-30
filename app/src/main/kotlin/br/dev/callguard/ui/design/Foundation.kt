@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.sin
@@ -346,16 +347,32 @@ fun CgStatusBlock(
     val cor = if (active) CgColor.Positive else CgColor.Negative
 
     Column(modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Faixa de estado: o sinal e a palavra ganham uma zona propria, fechada por um
+        // traco. Antes o rotulo flutuava colado na manchete e as duas informacoes
+        // disputavam a mesma leitura -- a de agora ("como esta") e a do que isso
+        // significa ("o que acontece").
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = CgSpace.lg),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             SinalDeEstado(active = active, color = cor)
-            Spacer(Modifier.width(CgSpace.md))
+            Spacer(Modifier.width(CgSpace.lg))
             Text(
                 text = if (active) "PROTEGIDO" else "SEM PROTEÇÃO",
                 style = CgType.overline,
                 color = cor,
+                modifier = Modifier.weight(1f),
             )
+            // A palavra "agora" ancora o estado no tempo: o que se le vale neste
+            // instante, nao e uma configuracao guardada.
+            Text(text = "AGORA", style = CgType.overline, color = CgColor.TextDisabled)
         }
-        Spacer(Modifier.height(CgSpace.lg))
+
+        CgDivider()
+
+        Spacer(Modifier.height(CgSpace.xxl))
         Text(text = headline, style = CgType.display, color = CgColor.TextPrimary)
         Spacer(Modifier.height(CgSpace.md))
         Text(text = supporting, style = CgType.body, color = CgColor.TextSecondary)
@@ -363,64 +380,68 @@ fun CgStatusBlock(
 }
 
 /**
- * O sinal de "protegido": um ponto que respira e emite ondas.
+ * O sinal de estado: um ponto que respira e emite ondas.
  *
  * A metáfora é a do produto — o app existe porque ondas saem de um telefone insistindo.
- * Aqui elas saem do sinal em ritmo calmo, o oposto da insistência: é assim que se mostra
- * que algo está vivo e em guarda sem escrever "vivo e em guarda".
+ * Aqui elas saem do sinal, e o **ritmo** diz qual é a situação:
  *
- * Só pulsa quando está protegendo. Sem proteção o ponto fica **parado**, e isso é
- * proposital: a ausência de movimento é a diferença mais rápida de perceber com o
- * canto do olho, e não depende de distinguir verde de vermelho.
+ *  - protegido: ciclo longo, ondas espaçadas. Calma é o oposto da insistência, e é o que
+ *    se quer comunicar quando está tudo certo;
+ *  - sem proteção: ciclo curto, ondas se atropelando. O mesmo desenho, com pressa.
  *
- * As ondas passam de 5 dp para ~21 dp de raio, extrapolando os limites do `Canvas` de
- * 10 dp. Isso é intencional e não é um erro de layout: o Compose não recorta o desenho
- * às bordas a menos que se peça, então as ondas transbordam sem que a linha inteira
- * precise reservar 42 dp de largura e empurrar o texto para o lado.
+ * O ritmo carrega a diferença junto com a cor, e não só a cor. Quem não distingue verde
+ * de vermelho — ou olha de relance, sem ler — percebe a cadência. Um estado de segurança
+ * que depende exclusivamente de matiz é um estado que algumas pessoas simplesmente não
+ * conseguem ler.
+ *
+ * As ondas passam do raio do ponto até cerca de quatro vezes ele, extrapolando os limites
+ * do `Canvas`. Isso é intencional e não é erro de layout: o Compose não recorta o desenho
+ * às bordas a menos que se peça, então elas transbordam sem que a linha precise reservar
+ * a largura total e empurrar o texto para o lado.
  */
 @Composable
-private fun SinalDeEstado(active: Boolean, color: Color) {
-    if (!active) {
-        Box(
-            Modifier
-                .size(10.dp)
-                .clip(CircleShape)
-                .background(color),
-        )
-        return
-    }
-
+private fun SinalDeEstado(
+    active: Boolean,
+    color: Color,
+    modifier: Modifier = Modifier,
+    dotSize: Dp = 12.dp,
+) {
     val transicao = rememberInfiniteTransition(label = "sinal")
     val fase by transicao.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2600, easing = LinearEasing),
+            // Protegido respira; sem proteção, insiste.
+            animation = tween(if (active) 2800 else 1500, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
         label = "fase-sinal",
     )
 
-    Canvas(Modifier.size(10.dp)) {
+    Canvas(modifier.size(dotSize)) {
         val centro = Offset(size.width / 2f, size.height / 2f)
         val raioPonto = size.minDimension / 2f
+        val alcance = if (active) 3.4f else 2.8f
+        val opacidade = if (active) 0.5f else 0.6f
 
-        // Três ondas defasadas: sempre há uma nascendo enquanto outra morre, o que
-        // torna o ciclo contínuo em vez de pulsar em blocos.
+        // Três ondas defasadas: sempre há uma nascendo enquanto outra morre, o que torna
+        // o ciclo contínuo em vez de pulsar em blocos.
         repeat(3) { indice ->
             val p = (fase + indice / 3f) % 1f
             // Desacelera ao se afastar, como onda perdendo energia.
             val avanco = 1f - (1f - p) * (1f - p)
             drawCircle(
-                color = color.copy(alpha = (1f - p) * 0.5f),
-                radius = raioPonto + raioPonto * 3.2f * avanco,
+                color = color.copy(alpha = (1f - p) * opacidade),
+                radius = raioPonto + raioPonto * alcance * avanco,
                 center = centro,
                 style = Stroke(width = 1.4.dp.toPx()),
             )
         }
 
-        // O ponto respira junto, discretamente.
-        val respiro = 1f + 0.09f * sin(fase * 2f * PI.toFloat())
+        // O ponto respira junto. Sem proteção o respiro é mais fundo, o que dá ao
+        // conjunto a leitura de alerta sem precisar piscar.
+        val amplitude = if (active) 0.09f else 0.16f
+        val respiro = 1f + amplitude * sin(fase * 2f * PI.toFloat())
         drawCircle(color = color, radius = raioPonto * respiro, center = centro)
     }
 }

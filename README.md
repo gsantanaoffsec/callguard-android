@@ -1035,7 +1035,7 @@ lista longa em vez de recompor cada linha a cada quadro.
 | Resultado da simulação | expande a partir do botão — é resposta ao que a pessoa pediu, não um bloco que sempre esteve ali |
 | Etiqueta de permissão | funde ao virar "concedida", confirmando que o pedido funcionou |
 | Marca no cabeçalho | o escudo se fecha e o branco sobe junto com a entrada da tela — os dois tempos da abertura, em miniatura |
-| Sinal de protegido | ondas verdes saem do ponto em ritmo calmo: a mesma metáfora do produto, invertida. Só pulsa protegendo; **parado** é o estado sem proteção, e ausência de movimento se percebe com o canto do olho sem depender de cor |
+| Sinal de estado | ondas saem do ponto nos dois estados; o **ritmo** é que muda — protegido respira (2,8 s), sem proteção insiste (1,5 s). A cadência carrega a diferença junto com a cor, para quem não distingue matiz ou só olha de relance |
 
 Durações: 180 ms para chips, 300 ms para interruptores e abas, 440 ms para expansões e
 entradas. Sem elasticidade e sem bounce em lugar nenhum.
@@ -1251,7 +1251,7 @@ Compilado e testado nesta máquina antes da entrega:
 ```
 > Task :app:compileDebugKotlin        (sem erros)
 > Task :app:kspDebugKotlin            (Room gerou os DAOs, schema v3 exportado)
-> Task :app:testDebugUnitTest         118 testes, 0 falhas
+> Task :app:testDebugUnitTest         130 testes, 0 falhas
 > Task :app:lintVitalRelease          (sem erros fatais)
 > Task :app:assembleRelease           (R8 + shrinkResources)
 BUILD SUCCESSFUL
@@ -1266,14 +1266,15 @@ BUILD SUCCESSFUL
 | `BackupCodecTest` | 11 | 0 |
 | `CallAttemptDaoTest` | 6 | 0 |
 | `PermissionCatalogTest` | 11 | 0 |
-| `HomeScreenInteractionTest` | 7 | 0 |
+| `WindowFormatTest` | 8 | 0 |
+| `HomeScreenInteractionTest` | 9 | 0 |
 | `CallerIdCodesTest` | 6 | 0 |
 | `BrazilPhoneRulesTest` | 5 | 0 |
 | `PhoneNumberMaskerTest` | 3 | 0 |
-| `ProtectionSettingsTest` | 3 | 0 |
-| **Total** | **118** | **0** |
+| `ProtectionSettingsTest` | 5 | 0 |
+| **Total** | **130** | **0** |
 
-APK release: **3,6 MB** com R8 (`CallGuard-2.4.1.apk`, versionCode 12). O APK debug fica
+APK release: **3,7 MB** com R8 (`CallGuard-2.5.0.apk`, versionCode 13). O APK debug fica
 em ~31 MB por carregar ferramental de desenvolvimento — serve para depurar, não para
 distribuir.
 

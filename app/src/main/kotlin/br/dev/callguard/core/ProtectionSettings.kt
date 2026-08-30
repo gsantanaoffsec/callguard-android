@@ -58,9 +58,17 @@ data class ProtectionSettings(
 
         val DEFAULT_WINDOW_MILLIS: Long = TimeUnit.MINUTES.toMillis(DEFAULT_WINDOW_MINUTES.toLong())
 
-        /** Opcoes oferecidas na UI. A arquitetura aceita qualquer valor; a UI apenas curadora. */
-        val MAX_CALL_OPTIONS: List<Int> = listOf(1, 2, 3, 4, 5)
-        val WINDOW_MINUTE_OPTIONS: List<Int> = listOf(5, 10, 15, 30, 60)
+        /**
+         * Opcoes prontas oferecidas na UI. A arquitetura aceita qualquer valor entre 1 e
+         * 24 h; estas sao apenas as escolhas curadas.
+         *
+         * A lista cresceu quando a fileira de chips virou uma folha: chip ocupava largura
+         * e obrigava a cortar a lista em cinco; uma folha rola, entao passou a caber o que
+         * as pessoas de fato pedem -- inclusive janelas de horas.
+         */
+        val MAX_CALL_OPTIONS: List<Int> = listOf(1, 2, 3, 4, 5, 6, 8, 10)
+        val WINDOW_MINUTE_OPTIONS: List<Int> =
+            listOf(5, 10, 15, 30, 45, 60, 120, 360, 720, 1440)
 
         /**
          * Ajusta valores vindos da persistencia para dentro de limites validos, em vez de

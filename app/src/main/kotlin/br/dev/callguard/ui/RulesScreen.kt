@@ -34,6 +34,7 @@ import br.dev.callguard.core.CallPolicy
 import br.dev.callguard.core.PolicySource
 import br.dev.callguard.core.ProtectionSettings
 import br.dev.callguard.core.SchedulePolicy
+import br.dev.callguard.core.WindowFormat
 import br.dev.callguard.ui.design.CgCallout
 import br.dev.callguard.ui.design.cgEnter
 import br.dev.callguard.ui.design.CgChoiceChip
@@ -46,6 +47,7 @@ import br.dev.callguard.ui.design.CgIconButton
 import br.dev.callguard.ui.design.CgListItem
 import br.dev.callguard.ui.design.CgMotion
 import br.dev.callguard.ui.design.CgNotice
+import br.dev.callguard.ui.design.CgPickerField
 import br.dev.callguard.ui.design.CgNoticeTone
 import br.dev.callguard.ui.design.CgScreen
 import br.dev.callguard.ui.design.CgSectionHeader
@@ -282,9 +284,26 @@ private fun LinhaVazia(texto: String) {
  * vez de aparecerem de uma vez — a animação explica que aquele bloco pertence ao
  * interruptor de cima.
  */
+/** Qual folha do modo noturno está aberta. */
+private enum class FolhaNoturna { INICIO, FIM, LIMITE, JANELA }
+
+/**
+ * Modo noturno.
+ *
+ * Os ajustes só existem quando o modo está ligado, e entram com uma expansão curta em
+ * vez de aparecerem de uma vez — a animação explica que aquele bloco pertence ao
+ * interruptor de cima.
+ *
+ * Os quatro seletores viraram campos. Antes eram, somados, cinquenta e poucos botões
+ * empilhados: vinte e quatro para a hora de início, outros vinte e quatro para a de fim,
+ * mais os limites. Escolher um horário exigia caçar dois dígitos numa grade.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ModoNoturno(schedule: SchedulePolicy, onChange: (SchedulePolicy) -> Unit) {
+    var folha by remember { mutableStateOf<FolhaNoturna?>(null) }
+    val janelaEmMinutos = TimeUnit.MILLISECONDS.toMinutes(schedule.windowMillis).toInt()
+
     Column(Modifier.fillMaxWidth()) {
         CgSectionHeader("Modo noturno")
         CgSwitchRow(
@@ -306,16 +325,19 @@ private fun ModoNoturno(schedule: SchedulePolicy, onChange: (SchedulePolicy) -> 
                 CgDivider()
                 CgGap(CgSpace.xl)
 
-                CampoDeAjuste("Começa às") {
-                    SeletorHora(schedule.startMinuteOfDay) {
-                        onChange(schedule.copy(startMinuteOfDay = it))
-                    }
-                }
-                CampoDeAjuste("Termina às") {
-                    SeletorHora(schedule.endMinuteOfDay) {
-                        onChange(schedule.copy(endMinuteOfDay = it))
-                    }
-                }
+                CgPickerField(
+                    label = "Começa às",
+                    value = "%02d:00".format(schedule.startMinuteOfDay / 60),
+                    onClick = { folha = FolhaNoturna.INICIO },
+                    modifier = Modifier.padding(bottom = CgSpace.xl),
+                )
+
+                CgPickerField(
+                    label = "Termina às",
+                    value = "%02d:00".format(schedule.endMinuteOfDay / 60),
+                    onClick = { folha = FolhaNoturna.FIM },
+                    modifier = Modifier.padding(bottom = CgSpace.xl),
+                )
 
                 if (schedule.startMinuteOfDay > schedule.endMinuteOfDay) {
                     CgNotice(
@@ -352,29 +374,56 @@ private fun ModoNoturno(schedule: SchedulePolicy, onChange: (SchedulePolicy) -> 
                     }
                 }
 
-                CampoDeAjuste("Chamadas permitidas no período") {
-                    CgChoiceRow(
-                        options = ProtectionSettings.MAX_CALL_OPTIONS,
-                        selected = schedule.maxAllowedCalls,
-                        label = { it.toString() },
-                        onSelected = { onChange(schedule.copy(maxAllowedCalls = it)) },
-                    )
-                }
+                CgPickerField(
+                    label = "Chamadas permitidas no período",
+                    value = if (schedule.maxAllowedCalls == 1) {
+                        "1 chamada"
+                    } else {
+                        "${schedule.maxAllowedCalls} chamadas"
+                    },
+                    onClick = { folha = FolhaNoturna.LIMITE },
+                    modifier = Modifier.padding(bottom = CgSpace.xl),
+                )
 
-                CampoDeAjuste("Dentro de") {
-                    CgChoiceRow(
-                        options = ProtectionSettings.WINDOW_MINUTE_OPTIONS,
-                        selected = TimeUnit.MILLISECONDS.toMinutes(schedule.windowMillis).toInt(),
-                        label = { if (it >= 60) "${it / 60} h" else "$it min" },
-                        onSelected = {
-                            onChange(
-                                schedule.copy(windowMillis = TimeUnit.MINUTES.toMillis(it.toLong())),
-                            )
-                        },
-                    )
-                }
+                CgPickerField(
+                    label = "Dentro de",
+                    value = WindowFormat.short(janelaEmMinutos),
+                    onClick = { folha = FolhaNoturna.JANELA },
+                )
             }
         }
+    }
+
+    when (folha) {
+        FolhaNoturna.INICIO -> HoraDoDiaSheet(
+            titulo = "Começa às",
+            minutoDoDiaAtual = schedule.startMinuteOfDay,
+            onSelect = { onChange(schedule.copy(startMinuteOfDay = it)) },
+            onDismiss = { folha = null },
+        )
+
+        FolhaNoturna.FIM -> HoraDoDiaSheet(
+            titulo = "Termina às",
+            minutoDoDiaAtual = schedule.endMinuteOfDay,
+            onSelect = { onChange(schedule.copy(endMinuteOfDay = it)) },
+            onDismiss = { folha = null },
+        )
+
+        FolhaNoturna.LIMITE -> LimiteDeChamadasSheet(
+            atual = schedule.maxAllowedCalls,
+            onSelect = { onChange(schedule.copy(maxAllowedCalls = it)) },
+            onDismiss = { folha = null },
+        )
+
+        FolhaNoturna.JANELA -> JanelaDeTempoSheet(
+            atualEmMinutos = janelaEmMinutos,
+            onSelect = {
+                onChange(schedule.copy(windowMillis = TimeUnit.MINUTES.toMillis(it.toLong())))
+            },
+            onDismiss = { folha = null },
+        )
+
+        null -> Unit
     }
 }
 
@@ -384,24 +433,6 @@ private fun CampoDeAjuste(rotulo: String, conteudo: @Composable () -> Unit) {
         Text(text = rotulo, style = CgType.subtitle, color = CgColor.TextPrimary)
         Spacer(Modifier.height(CgSpace.md))
         conteudo()
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun SeletorHora(minutoDoDia: Int, onChange: (Int) -> Unit) {
-    val horaAtual = minutoDoDia / 60
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(CgSpace.sm),
-        verticalArrangement = Arrangement.spacedBy(CgSpace.sm),
-    ) {
-        (0..23).forEach { h ->
-            CgChoiceChip(
-                text = "%02d".format(h),
-                selected = h == horaAtual,
-                onClick = { onChange(h * 60) },
-            )
-        }
     }
 }
 

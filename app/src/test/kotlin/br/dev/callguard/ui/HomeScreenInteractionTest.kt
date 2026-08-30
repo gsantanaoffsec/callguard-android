@@ -153,6 +153,8 @@ class HomeScreenInteractionTest {
     @Test
     fun `os demais controles da tela inicial respondem ao toque`() {
         montar()
+        // Na ordem em que aparecem na tela: `performScrollToNode` so rola para frente,
+        // entao procurar um item acima depois de ter descido nao encontra nada.
         listOf(
             "Bloquear chamadas insistentes",
             "Avisar quando bloquear",
@@ -162,9 +164,33 @@ class HomeScreenInteractionTest {
         ).forEach { rotulo ->
             tocarEm(hasText(rotulo))
         }
-        // Chips: o rotulo "5" tambem aparece na faixa de numeros, entao a busca precisa
-        // exigir que o no seja clicavel.
-        tocarEm(hasText("30 min") and hasClickAction())
+    }
+
+    /**
+     * O campo de janela abre a folha, e a folha oferece o valor em horas.
+     *
+     * Cobre a troca da fileira de chips pelo campo: se o campo parar de abrir a folha, a
+     * pessoa fica sem nenhuma forma de mudar a regra -- uma falha silenciosa, porque a
+     * tela continua desenhando normalmente.
+     */
+    @Test
+    fun `o campo de janela abre a folha com a opcao personalizada em horas`() {
+        montar()
+
+        tocarEm(hasText("Dentro de", ignoreCase = true) and hasClickAction())
+
+        compose.onNodeWithText("Personalizado, em horas").assertExists()
+        compose.onNodeWithText("de 1 a 24 horas").assertExists()
+    }
+
+    /** O campo de limite tambem abre, e mostra o que cada opcao significa. */
+    @Test
+    fun `o campo de limite abre a folha explicando cada opcao`() {
+        montar()
+
+        tocarEm(hasText("Chamadas permitidas", ignoreCase = true) and hasClickAction())
+
+        compose.onNodeWithText("a 4ª é recusada").assertExists()
     }
 
     private fun tocarEm(condicao: SemanticsMatcher) {

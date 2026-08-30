@@ -28,9 +28,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
-import br.dev.callguard.core.ProtectionSettings
+import br.dev.callguard.core.WindowFormat
 import androidx.compose.ui.unit.dp
-import br.dev.callguard.ui.design.CgChoiceRow
 import br.dev.callguard.ui.design.CgLogoMark
 import br.dev.callguard.ui.design.LocalScreenEntrance
 import br.dev.callguard.ui.design.CgMotion
@@ -38,6 +37,7 @@ import br.dev.callguard.ui.design.cgAnimatedCount
 import br.dev.callguard.ui.design.cgEnter
 import br.dev.callguard.ui.design.CgColor
 import br.dev.callguard.ui.design.CgDialog
+import br.dev.callguard.ui.design.CgPickerField
 import br.dev.callguard.ui.design.CgDivider
 import br.dev.callguard.ui.design.CgGap
 import br.dev.callguard.ui.design.CgIconButton
@@ -55,6 +55,9 @@ import br.dev.callguard.ui.design.CgSwitchRow
 import br.dev.callguard.ui.design.CgTextAction
 import br.dev.callguard.ui.design.CgTextField
 import br.dev.callguard.ui.design.CgType
+
+/** Qual folha de escolha está aberta. `null` quando nenhuma. */
+enum class FolhaDeAjuste { LIMITE, JANELA }
 
 /**
  * Tela inicial.
@@ -85,6 +88,7 @@ fun HomeScreen(
     bottomBar: @Composable () -> Unit,
 ) {
     var mostrarDialogo by remember { mutableStateOf(false) }
+    var folhaAberta by remember { mutableStateOf<FolhaDeAjuste?>(null) }
 
     CgScreen(
         title = "CallGuard",
@@ -100,7 +104,7 @@ fun HomeScreen(
 
         item("numeros") { Box(Modifier.cgEnter(2)) { FaixaDeNumeros(uiState) } }
 
-        secaoRegra(uiState, onMaxCallsChange, onWindowMinutesChange)
+        secaoRegra(uiState) { folhaAberta = it }
 
         secaoComportamento(
             uiState = uiState,
@@ -148,6 +152,22 @@ fun HomeScreen(
                 onClick = onOpenDiagnostics,
             )
         }
+    }
+
+    when (folhaAberta) {
+        FolhaDeAjuste.LIMITE -> LimiteDeChamadasSheet(
+            atual = uiState.settings.maxAllowedCalls,
+            onSelect = onMaxCallsChange,
+            onDismiss = { folhaAberta = null },
+        )
+
+        FolhaDeAjuste.JANELA -> JanelaDeTempoSheet(
+            atualEmMinutos = uiState.settings.windowMinutes,
+            onSelect = onWindowMinutesChange,
+            onDismiss = { folhaAberta = null },
+        )
+
+        null -> Unit
     }
 
     if (mostrarDialogo) {
@@ -271,8 +291,7 @@ private fun FaixaDeNumeros(uiState: CallGuardUiState) {
 
 private fun LazyListScope.secaoRegra(
     uiState: CallGuardUiState,
-    onMaxCallsChange: (Int) -> Unit,
-    onWindowMinutesChange: (Int) -> Unit,
+    onAbrirFolha: (FolhaDeAjuste) -> Unit,
 ) {
     item("regra-cabecalho") {
         CgSectionHeader(
@@ -281,32 +300,29 @@ private fun LazyListScope.secaoRegra(
         )
     }
     item("regra-max") {
-        Column(Modifier.fillMaxWidth().padding(bottom = CgSpace.xl)) {
-            Text("Chamadas permitidas", style = CgType.subtitle, color = CgColor.TextPrimary)
-            CgGap(CgSpace.md)
-            CgChoiceRow(
-                options = ProtectionSettings.MAX_CALL_OPTIONS,
-                selected = uiState.settings.maxAllowedCalls,
-                label = { it.toString() },
-                onSelected = onMaxCallsChange,
-            )
-        }
+        CgPickerField(
+            label = "Chamadas permitidas",
+            value = if (uiState.settings.maxAllowedCalls == 1) {
+                "1 chamada"
+            } else {
+                "${uiState.settings.maxAllowedCalls} chamadas"
+            },
+            onClick = { onAbrirFolha(FolhaDeAjuste.LIMITE) },
+            modifier = Modifier.padding(bottom = CgSpace.xl),
+        )
     }
     item("regra-janela") {
         Column(Modifier.fillMaxWidth()) {
-            Text("Dentro de", style = CgType.subtitle, color = CgColor.TextPrimary)
-            CgGap(CgSpace.md)
-            CgChoiceRow(
-                options = ProtectionSettings.WINDOW_MINUTE_OPTIONS,
-                selected = uiState.settings.windowMinutes,
-                label = { if (it >= 60) "${it / 60} h" else "$it min" },
-                onSelected = onWindowMinutesChange,
+            CgPickerField(
+                label = "Dentro de",
+                value = WindowFormat.short(uiState.settings.windowMinutes),
+                onClick = { onAbrirFolha(FolhaDeAjuste.JANELA) },
             )
             CgGap(CgSpace.lg)
             Text(
                 text = "Janela deslizante: contam só as ligações dos últimos " +
-                    "${uiState.settings.windowMinutes} minutos. Quem para de ligar volta a " +
-                    "passar sozinho.",
+                    "${WindowFormat.long(uiState.settings.windowMinutes)}. Quem para de " +
+                    "ligar volta a passar sozinho.",
                 style = CgType.caption,
                 color = CgColor.TextTertiary,
             )

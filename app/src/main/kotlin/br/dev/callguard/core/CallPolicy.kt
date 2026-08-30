@@ -17,15 +17,16 @@ data class CallPolicy(
 ) {
     val windowMinutes: Int get() = TimeUnit.MILLISECONDS.toMinutes(windowMillis).toInt()
 
-    /** Frase pronta para log e para a interface explicarem a decisao. */
+    /**
+     * Frase pronta para log e para a interface explicarem a decisao.
+     *
+     * A formatacao da janela vem de [WindowFormat] e nao daqui: desde que a janela aceita
+     * qualquer valor ate 24 h, ter a regra escrita em mais de um lugar produziria "90 min"
+     * numa tela e "1 h" em outra para o mesmo numero.
+     */
     fun describe(): String {
-        val janela = if (windowMinutes >= 60 && windowMinutes % 60 == 0) {
-            "${windowMinutes / 60} h"
-        } else {
-            "$windowMinutes min"
-        }
         val chamadas = if (maxAllowedCalls == 1) "1 chamada" else "$maxAllowedCalls chamadas"
-        return "$chamadas em $janela"
+        return "$chamadas em ${WindowFormat.short(windowMinutes)}"
     }
 }
 

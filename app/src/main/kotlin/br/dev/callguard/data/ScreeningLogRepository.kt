@@ -137,6 +137,7 @@ class ScreeningLogRepository(
             "CUSTOM_LIMIT_EXCEEDED" -> "Limite da regra do número excedido"
             "SCHEDULE_LIMIT_EXCEEDED" -> "Limite do modo noturno excedido"
             "PERMANENT_BLOCKLIST" -> "Bloqueado permanentemente pelo usuário"
+            "BLOCKED_PATTERN" -> "Caiu numa faixa de números bloqueada"
             "PROTECTION_DISABLED" -> "Proteção desligada"
             "ALLOWLISTED" -> "Número na lista de permitidos"
             "CONTACT_EXEMPT" -> "Contato salvo na agenda"

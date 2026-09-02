@@ -27,6 +27,13 @@ data class IncomingCall(
     val isAllowlisted: Boolean = false,
     /** Numero na lista de bloqueados permanentes. */
     val isBlocklisted: Boolean = false,
+    /**
+     * Regra de faixa que pegou este numero, quando alguma pegou.
+     *
+     * Carregada junto com a chamada em vez de consultada dentro da politica: o motor e
+     * Kotlin puro e nao conhece repositorio.
+     */
+    val matchedPattern: NumberPattern? = null,
     /** Numero presente na agenda do aparelho (so consultado quando faz diferenca). */
     val isSavedContact: Boolean = false,
     /** Numero classificado como emergencia pelo sistema. Nunca pode ser bloqueado. */

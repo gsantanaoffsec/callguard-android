@@ -2,6 +2,7 @@ package br.dev.callguard.ui
 
 import br.dev.callguard.core.AppPermission
 import br.dev.callguard.core.BackupPayload
+import br.dev.callguard.core.NumberPattern
 import br.dev.callguard.core.PermissionStatus
 import br.dev.callguard.core.DiagnosticsReport
 import br.dev.callguard.core.NumberSimulation
@@ -36,6 +37,8 @@ data class CallGuardUiState(
      * Aparece na aba de registro quando verdadeiro. Sem rede, esta e a unica forma de um
      * problema no aparelho de quem usa chegar a quem mantem o codigo.
      */
+    /** Faixas de numeros bloqueadas. */
+    val patterns: List<NumberPattern> = emptyList(),
     /** Situacao de cada autorizacao, para a tela de permissoes e o botao de conceder. */
     val permissionStatuses: Map<AppPermission, PermissionStatus> = emptyMap(),
     val hasCrashReport: Boolean = false,

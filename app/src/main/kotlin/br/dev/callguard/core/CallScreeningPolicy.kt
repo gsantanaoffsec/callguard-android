@@ -21,10 +21,11 @@ package br.dev.callguard.core
  *  3. Numero indisponivel   -> ALLOW
  *  4. Allowlist             -> ALLOW
  *  5. Blocklist             -> BLOCK
- *  6. Contato protegido     -> ALLOW
- *  7. Regra do numero       -> janela propria
- *  8. Regra por horario     -> janela do periodo
- *  9. Regra global          -> janela padrao
+ *  6. Faixa bloqueada       -> BLOCK
+ *  7. Contato protegido     -> ALLOW
+ *  8. Regra do numero       -> janela propria
+ *  9. Regra por horario     -> janela do periodo
+ * 10. Regra global          -> janela padrao
  *
  * A blocklist vem depois da allowlist porque as duas sao mutuamente exclusivas por
  * construcao; e vem ANTES da protecao de contatos porque uma acao manual do usuario
@@ -64,19 +65,28 @@ class CallScreeningPolicy {
                 ScreeningDecision.Block(BlockReason.PERMANENT_BLOCKLIST),
             )
         }
-        // 6. Protecao generica de contatos.
+        // 6. Faixa de numeros bloqueada. Vem depois do numero exato porque o exato e mais
+        //    especifico, e ANTES da protecao de contatos pela mesma razao que o bloqueio
+        //    permanente: uma faixa que a pessoa escreveu a mao e uma decisao sobre aqueles
+        //    numeros, mais especifica que a protecao generica da agenda.
+        call.matchedPattern?.takeIf { it.enabled }?.let {
+            return PolicyResolution.Immediate(
+                ScreeningDecision.Block(BlockReason.BLOCKED_PATTERN),
+            )
+        }
+        // 7. Protecao generica de contatos.
         if (call.isSavedContact && !call.settings.applyToContacts) {
             return allow(AllowReason.CONTACT_EXEMPT)
         }
-        // 7. Regra do proprio numero, mais especifica que horario e global.
+        // 8. Regra do proprio numero, mais especifica que horario e global.
         call.customRule?.takeIf { it.enabled }?.let {
             return PolicyResolution.UseWindow(it.toPolicy())
         }
-        // 8. Periodo especial valendo agora.
+        // 9. Periodo especial valendo agora.
         if (call.schedule.isActiveAt(call.localDateTime)) {
             return PolicyResolution.UseWindow(call.schedule.toPolicy())
         }
-        // 9. Regra geral.
+        // 10. Regra geral.
         return PolicyResolution.UseWindow(call.globalPolicy)
     }
 

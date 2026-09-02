@@ -14,7 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * exatamente o mesmo numero -- um laudo que informa a versao errada do banco e pior do
  * que um que nao informa nada.
  */
-const val DATABASE_VERSION = 3
+const val DATABASE_VERSION = 4
 
 /**
  * Banco local unico do app. Nunca sai do aparelho.
@@ -31,6 +31,7 @@ const val DATABASE_VERSION = 3
         ScreeningEventEntity::class,
         BlocklistEntryEntity::class,
         CustomRuleEntity::class,
+        PatternRuleEntity::class,
     ],
     version = DATABASE_VERSION,
     exportSchema = true,
@@ -48,6 +49,8 @@ abstract class CallGuardDatabase : RoomDatabase() {
     abstract fun blocklistDao(): BlocklistDao
 
     abstract fun customRuleDao(): CustomRuleDao
+
+    abstract fun patternRuleDao(): PatternRuleDao
 
     companion object {
         private const val DATABASE_NAME = "callguard.db"
@@ -110,11 +113,31 @@ abstract class CallGuardDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3 -> v4: bloqueio por faixa de numeros.
+         *
+         * Escrita a mao e conferida contra o schema que o KSP exporta. Chave composta:
+         * "comeca com 11" e "contem 11" sao regras distintas.
+         */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `pattern_rules` (" +
+                        "`digits` TEXT NOT NULL, " +
+                        "`match_kind` TEXT NOT NULL, " +
+                        "`label` TEXT NOT NULL, " +
+                        "`enabled` INTEGER NOT NULL, " +
+                        "`created_at` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`digits`, `match_kind`))",
+                )
+            }
+        }
+
         fun build(context: Context): CallGuardDatabase =
             Room.databaseBuilder(
                 context.applicationContext,
                 CallGuardDatabase::class.java,
                 DATABASE_NAME,
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
     }
 }

@@ -298,6 +298,8 @@ data class NumberSimulation(
     fun explanation(): String = when (val d = decision) {
         is ScreeningDecision.Block -> when (d.reason) {
             BlockReason.PERMANENT_BLOCKLIST -> "Este número está na lista de bloqueio permanente."
+            BlockReason.BLOCKED_PATTERN ->
+                "Este número cai numa faixa que você mandou bloquear."
             BlockReason.GLOBAL_LIMIT_EXCEEDED,
             BlockReason.CUSTOM_LIMIT_EXCEEDED,
             BlockReason.SCHEDULE_LIMIT_EXCEEDED,

@@ -450,6 +450,8 @@ class MainActivity : FragmentActivity() {
                         onRemoveBlocklist = viewModel::removeFromBlocklist,
                         onAddCustomRule = viewModel::addCustomRule,
                         onRemoveCustomRule = viewModel::removeCustomRule,
+                        onAddPattern = viewModel::addPattern,
+                        onRemovePattern = viewModel::removePattern,
                         onScheduleChange = { viewModel.setSchedule(it) },
                         bottomBar = barraDeAbas,
                     )

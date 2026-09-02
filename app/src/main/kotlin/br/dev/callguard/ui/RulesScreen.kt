@@ -31,6 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import br.dev.callguard.core.CallPolicy
+import br.dev.callguard.core.NumberPattern
+import br.dev.callguard.core.PhoneNumberMasker
 import br.dev.callguard.core.PolicySource
 import br.dev.callguard.core.ProtectionSettings
 import br.dev.callguard.core.SchedulePolicy
@@ -83,11 +85,14 @@ fun RulesScreen(
     onRemoveBlocklist: (String) -> Unit,
     onAddCustomRule: (raw: String, label: String, max: Int, windowMinutes: Int, force: Boolean) -> RuleConflict,
     onRemoveCustomRule: (String) -> Unit,
+    onAddPattern: (raw: String, label: String, kind: NumberPattern.MatchKind) -> Boolean,
+    onRemovePattern: (NumberPattern) -> Unit,
     onScheduleChange: (SchedulePolicy) -> Unit,
     bottomBar: @Composable () -> Unit,
 ) {
     var dialogoBloqueio by remember { mutableStateOf(false) }
     var dialogoRegra by remember { mutableStateOf(false) }
+    var dialogoFaixa by remember { mutableStateOf(false) }
 
     CgScreen(
         title = "Regras",
@@ -97,6 +102,7 @@ fun RulesScreen(
         item("precedencia") { Box(Modifier.cgEnter(1)) { EscadaDePrecedencia() } }
 
         secaoBloqueio(uiState, onRemoveBlocklist) { dialogoBloqueio = true }
+        secaoFaixas(uiState, onRemovePattern) { dialogoFaixa = true }
         secaoRegrasPorNumero(uiState, onRemoveCustomRule) { dialogoRegra = true }
 
         item("noturno") { Box(Modifier.cgEnter(4)) { ModoNoturno(uiState.schedule, onScheduleChange) } }
@@ -107,6 +113,14 @@ fun RulesScreen(
             onDismiss = { dialogoBloqueio = false },
             onConfirmar = onAddBlocklist,
             onSucesso = { dialogoBloqueio = false },
+        )
+    }
+
+    if (dialogoFaixa) {
+        DialogoFaixa(
+            numerosRecentes = uiState.screeningEvents.mapNotNull { it.normalizedNumber },
+            onDismiss = { dialogoFaixa = false },
+            onConfirmar = onAddPattern,
         )
     }
 
@@ -132,6 +146,7 @@ private fun EscadaDePrecedencia() {
         "Emergência" to "nunca bloqueada",
         "Nunca bloquear" to "sua lista de permitidos",
         "Bloqueio permanente" to "sua lista de bloqueados",
+        "Faixa bloqueada" to "por prefixo do número",
         "Contatos salvos" to "conforme o ajuste da tela inicial",
         "Regra do número" to "limite próprio",
         "Modo noturno" to "dentro do horário",
@@ -568,4 +583,180 @@ private fun AvisoConflito(conflito: RuleConflict) {
     }
     CgGap(CgSpace.md)
     CgCallout(text = texto, color = CgColor.Warning, background = CgColor.WarningDim)
+}
+
+/**
+ * Faixas de números bloqueadas.
+ *
+ * Existe por um limite do Android que não dá para contornar: o sistema **apaga** o nome de
+ * quem liga antes de entregar a chamada a um app de filtragem, então "bloquear tudo que
+ * aparece como Claro" é impossível — o app nunca vê essa palavra. O que ele vê é o número,
+ * e quem liga em volume não usa um número: usa uma faixa.
+ */
+private fun LazyListScope.secaoFaixas(
+    uiState: CallGuardUiState,
+    onRemover: (NumberPattern) -> Unit,
+    onAdicionar: () -> Unit,
+) {
+    item("faixa-cabecalho") {
+        CgSectionHeader(
+            label = "Faixa bloqueada",
+            description = "Bloqueia todo número que comece com (ou contenha) certos dígitos. " +
+                "É o jeito de barrar quem liga de dezenas de números diferentes.",
+        )
+    }
+    if (uiState.patterns.isEmpty()) {
+        item("faixa-vazio") { LinhaVazia("Nenhuma faixa bloqueada.") }
+    } else {
+        items(
+            count = uiState.patterns.size,
+            key = { i -> "f-${uiState.patterns[i].digits}-${uiState.patterns[i].kind}" },
+        ) { indice ->
+            val padrao = uiState.patterns[indice]
+            Column(Modifier.animateItem()) {
+                CgListItem(
+                    title = padrao.label,
+                    subtitle = padrao.describe(),
+                    meta = when (padrao.breadth()) {
+                        NumberPattern.Breadth.VERY_BROAD -> "Faixa muito ampla"
+                        NumberPattern.Breadth.BROAD -> "Faixa ampla"
+                        NumberPattern.Breadth.NARROW -> null
+                    },
+                    metaColor = CgColor.Warning,
+                    trailing = {
+                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            CgTag(
+                                text = "faixa",
+                                color = CgColor.Negative,
+                                background = CgColor.NegativeDim,
+                            )
+                            CgIconButton(
+                                icon = Icons.Default.Delete,
+                                contentDescription = "Remover ${padrao.label}",
+                                tint = CgColor.TextTertiary,
+                                onClick = { onRemover(padrao) },
+                            )
+                        }
+                    },
+                )
+                if (indice < uiState.patterns.lastIndex) CgDivider()
+            }
+        }
+    }
+    item("faixa-add") {
+        CgTextAction(
+            text = "Bloquear uma faixa",
+            icon = Icons.Default.Add,
+            onClick = onAdicionar,
+            modifier = Modifier.padding(top = CgSpace.sm),
+        )
+    }
+}
+
+/**
+ * Criação de uma faixa, com prévia do estrago.
+ *
+ * A prévia não é enfeite: um prefixo de dois dígitos é um DDD inteiro, e o efeito só
+ * apareceria depois — na forma de ligações que deixaram de tocar sem a pessoa entender
+ * por quê. Mostrar quantos dos registros recentes seriam pegos, e quais, transforma uma
+ * aposta em uma decisão.
+ */
+@Composable
+private fun DialogoFaixa(
+    numerosRecentes: List<String>,
+    onDismiss: () -> Unit,
+    onConfirmar: (raw: String, label: String, kind: NumberPattern.MatchKind) -> Boolean,
+) {
+    var digitos by remember { mutableStateOf("") }
+    var nome by remember { mutableStateOf("") }
+    var tipo by remember { mutableStateOf(NumberPattern.MatchKind.STARTS_WITH) }
+    var erro by remember { mutableStateOf(false) }
+
+    val previa = remember(digitos, tipo, numerosRecentes) {
+        NumberPattern.from(digitos, "", tipo)?.let { padrao ->
+            numerosRecentes.filter { padrao.matches(it) }
+        }
+    }
+    val amplitude = remember(digitos) {
+        NumberPattern.from(digitos, "", tipo)?.breadth()
+    }
+
+    CgDialog(
+        title = "Bloquear uma faixa",
+        description = "Todo número que casar com o padrão é recusado, inclusive os que " +
+            "ainda não ligaram. Só sai daqui quando você remover.",
+        onDismiss = onDismiss,
+        confirmText = "Bloquear faixa",
+        confirmEnabled = digitos.filter { it.isDigit() }.length >= NumberPattern.MIN_DIGITS,
+        destructive = true,
+        onConfirm = {
+            if (onConfirmar(digitos, nome, tipo)) onDismiss() else erro = true
+        },
+    ) {
+        Column {
+            CgTextField(
+                value = digitos,
+                onValueChange = { digitos = it; erro = false },
+                label = "Dígitos",
+                placeholder = "0303",
+                isError = erro,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            )
+            Spacer(Modifier.height(CgSpace.md))
+            CgTextField(
+                value = nome,
+                onValueChange = { nome = it },
+                label = "Nome (opcional)",
+                placeholder = "Telemarketing",
+            )
+
+            CgGap(CgSpace.lg)
+            Text("Como comparar", style = CgType.caption, color = CgColor.TextSecondary)
+            CgGap(CgSpace.sm)
+            CgChoiceRow(
+                options = NumberPattern.MatchKind.entries.toList(),
+                selected = tipo,
+                label = { it.label },
+                onSelected = { tipo = it },
+            )
+
+            if (amplitude == NumberPattern.Breadth.VERY_BROAD) {
+                CgGap(CgSpace.md)
+                CgCallout(
+                    text = "Dois dígitos pegam um DDD inteiro. Todo número dessa região " +
+                        "seria recusado — inclusive os que você quer receber.",
+                    color = CgColor.Warning,
+                    background = CgColor.WarningDim,
+                )
+            }
+
+            if (previa != null) {
+                CgGap(CgSpace.lg)
+                Text(
+                    text = if (previa.isEmpty()) {
+                        "Nenhum dos seus registros recentes casa com este padrão."
+                    } else {
+                        "${previa.size} dos seus registros recentes seriam recusados:"
+                    },
+                    style = CgType.caption,
+                    color = if (previa.isEmpty()) CgColor.TextTertiary else CgColor.TextPrimary,
+                )
+                previa.take(3).forEach { numero ->
+                    CgGap(CgSpace.xs)
+                    Text(
+                        text = PhoneNumberMasker.mask(numero),
+                        style = CgType.mono,
+                        color = CgColor.TextSecondary,
+                    )
+                }
+            }
+
+            if (erro) {
+                CgNotice(
+                    text = "Digite pelo menos ${NumberPattern.MIN_DIGITS} dígitos.",
+                    tone = CgNoticeTone.ERROR,
+                )
+            }
+        }
+    }
 }

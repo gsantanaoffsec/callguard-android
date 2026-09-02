@@ -35,6 +35,7 @@ object ServiceLocator {
     @Volatile private var backupRepository: BackupRepository? = null
     @Volatile private var diagnosticsRepository: DiagnosticsRepository? = null
     @Volatile private var crashReporter: CrashReporter? = null
+    @Volatile private var patternRuleRepository: PatternRuleRepository? = null
 
     private val policy = CallScreeningPolicy()
 
@@ -130,6 +131,12 @@ object ServiceLocator {
                 normalizer = phoneNumberNormalizer(context),
                 policy = policy,
             ).also { diagnosticsRepository = it }
+        }
+
+    fun patternRuleRepository(context: Context): PatternRuleRepository =
+        patternRuleRepository ?: synchronized(lock) {
+            patternRuleRepository ?: PatternRuleRepository(database(context).patternRuleDao())
+                .also { patternRuleRepository = it }
         }
 
     fun crashReporter(context: Context): CrashReporter =

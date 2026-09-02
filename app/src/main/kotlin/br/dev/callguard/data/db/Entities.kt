@@ -95,3 +95,19 @@ data class CustomRuleEntity(
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )
+
+/**
+ * Regra que casa com uma FAIXA de numeros.
+ *
+ * Chave composta por digitos + tipo: "comeca com 11" e "contem 11" sao regras diferentes
+ * e podem coexistir. Com a chave so nos digitos, criar a segunda apagaria a primeira em
+ * silencio.
+ */
+@Entity(tableName = "pattern_rules", primaryKeys = ["digits", "match_kind"])
+data class PatternRuleEntity(
+    @ColumnInfo(name = "digits") val digits: String,
+    @ColumnInfo(name = "match_kind") val matchKind: String,
+    @ColumnInfo(name = "label") val label: String,
+    @ColumnInfo(name = "enabled") val enabled: Boolean,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+)

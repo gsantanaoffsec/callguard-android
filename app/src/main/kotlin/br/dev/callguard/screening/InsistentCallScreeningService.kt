@@ -97,11 +97,20 @@ class InsistentCallScreeningService : CallScreeningService() {
         val isBlocklisted = temNumero && !isAllowlisted &&
             locator.blocklistRepository(this).contains(normalizedNumber!!)
 
+        // Faixa bloqueada. Nao consultada quando a chamada ja esta resolvida por numero
+        // exato: seria varrer a lista de padroes para chegar na mesma resposta.
+        val matchedPattern = if (temNumero && !isAllowlisted && !isBlocklisted) {
+            locator.patternRuleRepository(this).matching(normalizedNumber)
+        } else {
+            null
+        }
+
         // Consultamos a agenda somente quando a resposta pode mudar a decisao.
         val needsContactCheck = settings.protectionEnabled &&
             !settings.applyToContacts &&
             !isAllowlisted &&
             !isBlocklisted &&
+            matchedPattern == null &&
             rawNumber != null
         val isSavedContact = needsContactCheck &&
             locator.contactLookup(this).isSavedContact(rawNumber!!)
@@ -120,6 +129,7 @@ class InsistentCallScreeningService : CallScreeningService() {
             settings = settings,
             globalPolicy = settings.globalPolicy(),
             isAllowlisted = isAllowlisted,
+            matchedPattern = matchedPattern,
             isBlocklisted = isBlocklisted,
             isSavedContact = isSavedContact,
             isEmergencyNumber = isEmergency,

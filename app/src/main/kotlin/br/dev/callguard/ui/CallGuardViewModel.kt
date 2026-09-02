@@ -55,6 +55,7 @@ class CallGuardViewModel(
     private val screeningLogRepository: ScreeningLogRepository,
     private val blocklistRepository: BlocklistRepository,
     private val customRuleRepository: CustomRuleRepository,
+    private val patternRuleRepository: br.dev.callguard.data.PatternRuleRepository,
     private val backupRepository: BackupRepository,
     private val diagnosticsRepository: DiagnosticsRepository,
     private val crashReporter: br.dev.callguard.data.CrashReporter,
@@ -100,6 +101,27 @@ class CallGuardViewModel(
             customRuleRepository.observeRules().collect { regras ->
                 customRuleRepository.onRulesChanged(regras)
                 _uiState.update { it.copy(customRules = regras) }
+            }
+        }
+        viewModelScope.launch {
+            patternRuleRepository.observeRules().collect { regras ->
+                patternRuleRepository.onRulesChanged(regras)
+                _uiState.update { estado ->
+                    estado.copy(
+                        patterns = regras.map { r ->
+                            br.dev.callguard.core.NumberPattern(
+                                digits = r.digits,
+                                label = r.label,
+                                kind = runCatching {
+                                    br.dev.callguard.core.NumberPattern.MatchKind.valueOf(r.matchKind)
+                                }.getOrDefault(
+                                    br.dev.callguard.core.NumberPattern.MatchKind.STARTS_WITH,
+                                ),
+                                enabled = r.enabled,
+                            )
+                        },
+                    )
+                }
             }
         }
         viewModelScope.launch {
@@ -476,6 +498,26 @@ class CallGuardViewModel(
         customRuleRepository.remove(normalizedNumber)
     }
 
+    /**
+     * Cria uma faixa bloqueada.
+     *
+     * @return `false` quando o texto digitado nao produz digitos suficientes. A recusa e
+     *   deliberada: um padrao de um digito casaria com quase todo numero.
+     */
+    fun addPattern(
+        raw: String,
+        label: String,
+        kind: br.dev.callguard.core.NumberPattern.MatchKind,
+    ): Boolean {
+        val padrao = br.dev.callguard.core.NumberPattern.from(raw, label, kind) ?: return false
+        viewModelScope.launch { patternRuleRepository.upsert(padrao) }
+        return true
+    }
+
+    fun removePattern(padrao: br.dev.callguard.core.NumberPattern) = viewModelScope.launch {
+        patternRuleRepository.remove(padrao.digits, padrao.kind)
+    }
+
     fun clearBlockedCalls() = viewModelScope.launch {
         historyRepository.clearBlockedCalls()
         settingsRepository.resetBlockedTotal()
@@ -495,6 +537,7 @@ class CallGuardViewModel(
                     screeningLogRepository = ServiceLocator.screeningLogRepository(application),
                     blocklistRepository = ServiceLocator.blocklistRepository(application),
                     customRuleRepository = ServiceLocator.customRuleRepository(application),
+                    patternRuleRepository = ServiceLocator.patternRuleRepository(application),
                     backupRepository = ServiceLocator.backupRepository(application),
                     diagnosticsRepository = ServiceLocator.diagnosticsRepository(application),
                     crashReporter = ServiceLocator.crashReporter(application),

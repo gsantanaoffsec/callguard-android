@@ -427,9 +427,9 @@ apagaria tentativas que a outra ainda precisa contar. Bloqueios ficam limitados 
 mais recentes; o registro de decisões, aos 500. Um app que lida com telefones não deve
 acumular telefones indefinidamente.
 
-**Migrações:** o banco está na **v3** e as duas migrações são objetos `Migration`
+**Migrações:** o banco está na **v4** e as duas migrações são objetos `Migration`
 escritos à mão e conferidos contra o schema JSON que o KSP exporta — `v1→v2` cria
-`screening_events`, `v2→v3` cria `blocklist_entries` e `custom_rules`.
+`screening_events`, `v2→v3` cria `blocklist_entries` e `custom_rules`, `v3→v4` cria `pattern_rules`.
 `fallbackToDestructiveMigration` não é usado em lugar nenhum: quem já tem o app
 instalado perderia listas e configurações.
 
@@ -781,6 +781,47 @@ que não acessa a rede.
 Preencher esse campo pelo prefixo seria informação errada com cara de certa, e num app
 sobre chamadas indesejadas isso levaria a conclusões erradas. O arquivo e a tela dizem
 explicitamente por que a operadora não aparece.
+
+---
+
+## 14-A. Bloqueio por faixa de números
+
+Existe por um limite do Android que **não dá para contornar**: em
+`ParcelableCallUtils.toParcelableCallForScreening`, o sistema anula `callerDisplayName`,
+`contactDisplayName` e `name` antes de entregar a chamada a um serviço de filtragem. Só o
+número passa — e mesmo ele apenas quando a apresentação é permitida. Ou seja: **"bloquear
+tudo que aparece como Claro" é impossível por construção.** O app nunca vê essa palavra.
+
+O que ele vê é o número. E quem liga em volume não usa um número: usa uma faixa. Bloquear
+o prefixo pega a faixa inteira, inclusive os números que ainda não ligaram.
+
+| Campo | O que faz |
+|---|---|
+| Dígitos | 2 a 15 dígitos; qualquer formatação digitada é descartada |
+| Começa com | o número inicia por esses dígitos — é como faixas de telefonia são organizadas |
+| Contém | os dígitos aparecem em qualquer posição; rede de arrasto |
+
+**A comparação acontece contra duas formas do mesmo número**, e isso não é preciosismo. O
+normalizador produz `+5511999998888` para um celular comum, mas devolve só os dígitos
+(`03031234567`) para códigos não geográficos, que não são E.164 válidos. Um padrão `0303`
+jamais casaria com a primeira forma; um padrão `11` jamais casaria com a segunda. Testar as
+duas é o que faz o recurso se comportar como a pessoa espera sem ela precisar saber o que
+é E.164. E o `55` só é removido quando o número **declara** o Brasil com `+55` — tirá-lo
+de qualquer sequência transformaria `5512345678` em `12345678` e criaria casamentos falsos.
+
+**A prévia antes de salvar** mostra quantos dos registros recentes seriam recusados, e
+quais (mascarados). Um prefixo de dois dígitos é um DDD inteiro; sem a prévia, o estrago só
+apareceria depois, como ligações que deixaram de tocar sem explicação. A tela avisa
+explicitamente nesse caso.
+
+**Duas garantias que os testes fixam:** emergência vence a faixa (uma faixa larga poderia
+pegar um número de emergência por acidente), e a lista de permitidos vence a faixa — é o
+escape que permite bloquear um DDD inteiro e liberar um número específico dentro dele.
+
+Sobre o prefixo **0303**: era obrigatório para telemarketing desde 2022, mas a ANATEL
+[revogou a obrigatoriedade em agosto de 2025](https://agenciabrasil.ebc.com.br/geral/noticia/2025-08/anatel-revoga-obrigatoriedade-do-uso-do-prefixo-0303-em-ligacoes).
+Ainda é usado por parte do setor, mas não dá mais para tratá-lo como regra — motivo a mais
+para o recurso ser uma faixa configurável em vez de uma lista fixa no código.
 
 ---
 
@@ -1251,7 +1292,7 @@ Compilado e testado nesta máquina antes da entrega:
 ```
 > Task :app:compileDebugKotlin        (sem erros)
 > Task :app:kspDebugKotlin            (Room gerou os DAOs, schema v3 exportado)
-> Task :app:testDebugUnitTest         130 testes, 0 falhas
+> Task :app:testDebugUnitTest         149 testes, 0 falhas
 > Task :app:lintVitalRelease          (sem erros fatais)
 > Task :app:assembleRelease           (R8 + shrinkResources)
 BUILD SUCCESSFUL
@@ -1259,22 +1300,23 @@ BUILD SUCCESSFUL
 
 | Suíte | Testes | Falhas |
 |---|---|---|
-| `CallScreeningPolicyTest` | 30 | 0 |
+| `CallScreeningPolicyTest` | 37 | 0 |
 | `DiagnosticsAssemblerTest` | 14 | 0 |
 | `PhoneOriginTest` | 11 | 0 |
 | `SchedulePolicyTest` | 11 | 0 |
 | `BackupCodecTest` | 11 | 0 |
 | `CallAttemptDaoTest` | 6 | 0 |
 | `PermissionCatalogTest` | 11 | 0 |
+| `NumberPatternTest` | 12 | 0 |
 | `WindowFormatTest` | 8 | 0 |
 | `HomeScreenInteractionTest` | 9 | 0 |
 | `CallerIdCodesTest` | 6 | 0 |
 | `BrazilPhoneRulesTest` | 5 | 0 |
 | `PhoneNumberMaskerTest` | 3 | 0 |
 | `ProtectionSettingsTest` | 5 | 0 |
-| **Total** | **130** | **0** |
+| **Total** | **149** | **0** |
 
-APK release: **3,7 MB** com R8 (`CallGuard-2.5.0.apk`, versionCode 13). O APK debug fica
+APK release: **3,7 MB** com R8 (`CallGuard-2.6.0.apk`, versionCode 14). O APK debug fica
 em ~31 MB por carregar ferramental de desenvolvimento — serve para depurar, não para
 distribuir.
 

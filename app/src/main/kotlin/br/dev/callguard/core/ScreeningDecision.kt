@@ -60,6 +60,15 @@ enum class BlockReason {
     /** O usuario mandou nunca aceitar este numero. */
     PERMANENT_BLOCKLIST,
 
+    /**
+     * O numero caiu numa faixa que o usuario mandou bloquear.
+     *
+     * Separado de PERMANENT_BLOCKLIST porque no registro importa saber que foi uma REGRA
+     * que pegou, e nao um numero listado a mao -- e porque so assim da para descobrir que
+     * uma faixa larga demais esta derrubando o que nao devia.
+     */
+    BLOCKED_PATTERN,
+
     GLOBAL_LIMIT_EXCEEDED,
     CUSTOM_LIMIT_EXCEEDED,
     SCHEDULE_LIMIT_EXCEEDED,

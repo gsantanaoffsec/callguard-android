@@ -43,6 +43,7 @@ class CallScreeningPolicyTest {
         isEmergencyNumber: Boolean = false,
         isIncoming: Boolean = true,
         customRule: CustomRule? = null,
+        matchedPattern: NumberPattern? = null,
         schedule: SchedulePolicy = SchedulePolicy(),
         localDateTime: LocalDateTime = meioDiaQuarta,
     ) = IncomingCall(
@@ -52,6 +53,7 @@ class CallScreeningPolicyTest {
         settings = settings,
         globalPolicy = settings.globalPolicy(),
         isAllowlisted = isAllowlisted,
+        matchedPattern = matchedPattern,
         isBlocklisted = isBlocklisted,
         isSavedContact = isSavedContact,
         isEmergencyNumber = isEmergencyNumber,
@@ -374,6 +376,91 @@ class CallScreeningPolicyTest {
             policy.evaluate(callAt(2, settings = s), attemptsAt(1)),
             BlockReason.GLOBAL_LIMIT_EXCEEDED,
             attempts = 2,
+        )
+    }
+
+    // ---------------------------------------------------- faixa de numeros bloqueada
+
+    private val faixaClaro = NumberPattern(digits = "1140", label = "Telemarketing")
+
+    @Test
+    fun `numero que cai numa faixa bloqueada e recusado sem consultar historico`() {
+        val decisao = policy.resolve(callAt(0, matchedPattern = faixaClaro))
+        assertTrue(decisao is PolicyResolution.Immediate)
+        val bloqueio = (decisao as PolicyResolution.Immediate).decision
+        assertTrue(bloqueio is ScreeningDecision.Block)
+        assertEquals(BlockReason.BLOCKED_PATTERN, (bloqueio as ScreeningDecision.Block).reason)
+    }
+
+    @Test
+    fun `emergencia vence a faixa bloqueada`() {
+        // Regra absoluta: nenhuma configuracao do usuario pode barrar emergencia, e uma
+        // faixa larga poderia pegar um numero de emergencia por acidente.
+        val decisao = policy.resolve(
+            callAt(0, number = "190", isEmergencyNumber = true, matchedPattern = faixaClaro),
+        )
+        val permitido = (decisao as PolicyResolution.Immediate).decision
+        assertEquals(
+            AllowReason.EMERGENCY_NUMBER,
+            (permitido as ScreeningDecision.Allow).reason,
+        )
+    }
+
+    @Test
+    fun `lista de permitidos vence a faixa bloqueada`() {
+        // E o escape: bloquear a faixa inteira e liberar um numero especifico dentro dela.
+        // Sem isto, quem bloqueasse o proprio DDD nao teria como abrir excecao.
+        val decisao = policy.resolve(
+            callAt(0, isAllowlisted = true, matchedPattern = faixaClaro),
+        )
+        val permitido = (decisao as PolicyResolution.Immediate).decision
+        assertEquals(AllowReason.ALLOWLISTED, (permitido as ScreeningDecision.Allow).reason)
+    }
+
+    @Test
+    fun `protecao desligada libera mesmo com faixa bloqueada`() {
+        val decisao = policy.resolve(
+            callAt(
+                0,
+                settings = defaultSettings.copy(protectionEnabled = false),
+                matchedPattern = faixaClaro,
+            ),
+        )
+        val permitido = (decisao as PolicyResolution.Immediate).decision
+        assertEquals(
+            AllowReason.PROTECTION_DISABLED,
+            (permitido as ScreeningDecision.Allow).reason,
+        )
+    }
+
+    @Test
+    fun `faixa bloqueada vence a protecao de contatos`() {
+        // Mesma logica do bloqueio permanente: uma faixa escrita a mao e uma decisao
+        // sobre aqueles numeros, mais especifica que a protecao generica da agenda.
+        val decisao = policy.resolve(callAt(0, isSavedContact = true, matchedPattern = faixaClaro))
+        val bloqueio = (decisao as PolicyResolution.Immediate).decision
+        assertEquals(BlockReason.BLOCKED_PATTERN, (bloqueio as ScreeningDecision.Block).reason)
+    }
+
+    @Test
+    fun `faixa desativada nao bloqueia`() {
+        val decisao = policy.resolve(
+            callAt(0, matchedPattern = faixaClaro.copy(enabled = false)),
+        )
+        assertTrue("deveria cair na janela normal", decisao is PolicyResolution.UseWindow)
+    }
+
+    @Test
+    fun `numero exato bloqueado tem precedencia sobre a faixa`() {
+        // Os dois bloqueiam, mas o motivo registrado precisa ser o mais especifico --
+        // e o que permite descobrir depois se foi uma faixa larga demais que pegou.
+        val decisao = policy.resolve(
+            callAt(0, isBlocklisted = true, matchedPattern = faixaClaro),
+        )
+        val bloqueio = (decisao as PolicyResolution.Immediate).decision
+        assertEquals(
+            BlockReason.PERMANENT_BLOCKLIST,
+            (bloqueio as ScreeningDecision.Block).reason,
         )
     }
 }

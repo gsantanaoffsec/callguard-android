@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,13 +32,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import br.dev.callguard.core.CallPolicy
+import br.dev.callguard.core.KnownRanges
 import br.dev.callguard.core.NumberPattern
+import br.dev.callguard.core.PatternSuggester
 import br.dev.callguard.core.PhoneNumberMasker
 import br.dev.callguard.core.PolicySource
 import br.dev.callguard.core.ProtectionSettings
 import br.dev.callguard.core.SchedulePolicy
 import br.dev.callguard.core.WindowFormat
 import br.dev.callguard.ui.design.CgCallout
+import br.dev.callguard.ui.design.CgOptionRow
+import br.dev.callguard.ui.design.CgOptionSheet
 import br.dev.callguard.ui.design.cgEnter
 import br.dev.callguard.ui.design.CgChoiceChip
 import br.dev.callguard.ui.design.CgChoiceRow
@@ -93,6 +98,7 @@ fun RulesScreen(
     var dialogoBloqueio by remember { mutableStateOf(false) }
     var dialogoRegra by remember { mutableStateOf(false) }
     var dialogoFaixa by remember { mutableStateOf(false) }
+    var folhaFaixasProntas by remember { mutableStateOf(false) }
 
     CgScreen(
         title = "Regras",
@@ -102,7 +108,12 @@ fun RulesScreen(
         item("precedencia") { Box(Modifier.cgEnter(1)) { EscadaDePrecedencia() } }
 
         secaoBloqueio(uiState, onRemoveBlocklist) { dialogoBloqueio = true }
-        secaoFaixas(uiState, onRemovePattern) { dialogoFaixa = true }
+        secaoFaixas(
+            uiState = uiState,
+            onRemover = onRemovePattern,
+            onAdicionar = { dialogoFaixa = true },
+            onAbrirProntas = { folhaFaixasProntas = true },
+        )
         secaoRegrasPorNumero(uiState, onRemoveCustomRule) { dialogoRegra = true }
 
         item("noturno") { Box(Modifier.cgEnter(4)) { ModoNoturno(uiState.schedule, onScheduleChange) } }
@@ -113,6 +124,15 @@ fun RulesScreen(
             onDismiss = { dialogoBloqueio = false },
             onConfirmar = onAddBlocklist,
             onSucesso = { dialogoBloqueio = false },
+        )
+    }
+
+    if (folhaFaixasProntas) {
+        FolhaFaixasProntas(
+            uiState = uiState,
+            onDismiss = { folhaFaixasProntas = false },
+            onBloquear = onAddPattern,
+            onDesbloquear = onRemovePattern,
         )
     }
 
@@ -597,6 +617,7 @@ private fun LazyListScope.secaoFaixas(
     uiState: CallGuardUiState,
     onRemover: (NumberPattern) -> Unit,
     onAdicionar: () -> Unit,
+    onAbrirProntas: () -> Unit,
 ) {
     item("faixa-cabecalho") {
         CgSectionHeader(
@@ -644,12 +665,129 @@ private fun LazyListScope.secaoFaixas(
         }
     }
     item("faixa-add") {
-        CgTextAction(
-            text = "Bloquear uma faixa",
-            icon = Icons.Default.Add,
-            onClick = onAdicionar,
-            modifier = Modifier.padding(top = CgSpace.sm),
+        Column(Modifier.padding(top = CgSpace.sm)) {
+            CgTextAction(
+                text = "Telemarketing e operadoras",
+                icon = Icons.Default.Add,
+                onClick = onAbrirProntas,
+            )
+            CgTextAction(
+                text = "Bloquear uma faixa própria",
+                icon = Icons.Default.Add,
+                onClick = onAdicionar,
+                color = CgColor.TextSecondary,
+            )
+        }
+    }
+}
+
+/**
+ * Faixas prontas: o que o registro sugere, e o catálogo conhecido.
+ *
+ * A ordem importa e não é arbitrária. As **sugestões vêm primeiro** porque são as que de
+ * fato resolvem: uma operadora fazendo campanha não liga do número da central, liga de um
+ * DDD comum, e a faixa muda por região e por campanha. Ninguém consegue enumerar isso no
+ * código — mas o aparelho já tem a resposta, no registro de quem ligou.
+ *
+ * O catálogo abaixo é útil, e é honesto sobre o próprio limite: os números de atendimento
+ * das operadoras são os que a pessoa liga, não de onde elas ligam.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FolhaFaixasProntas(
+    uiState: CallGuardUiState,
+    onDismiss: () -> Unit,
+    onBloquear: (raw: String, label: String, kind: NumberPattern.MatchKind) -> Boolean,
+    onDesbloquear: (NumberPattern) -> Unit,
+) {
+    val sugestoes = remember(uiState.screeningEvents, uiState.patterns, uiState.allowlist) {
+        PatternSuggester.suggest(
+            numbers = uiState.screeningEvents.mapNotNull { it.normalizedNumber },
+            protectedNumbers = uiState.allowlistedNumbers,
+            existingPatterns = uiState.patterns,
         )
+    }
+
+    CgOptionSheet(
+        title = "Telemarketing e operadoras",
+        description = "Toque para bloquear. Toque de novo para desfazer.",
+        onDismiss = onDismiss,
+    ) {
+        if (sugestoes.isNotEmpty()) {
+            Text(
+                text = "DO SEU REGISTRO",
+                style = CgType.overline,
+                color = CgColor.TextTertiary,
+            )
+            CgGap(CgSpace.sm)
+            Text(
+                text = "Números diferentes que ligaram para você e compartilham o mesmo " +
+                    "começo. É o que pega quem liga de vários números.",
+                style = CgType.caption,
+                color = CgColor.TextSecondary,
+            )
+            CgGap(CgSpace.md)
+
+            sugestoes.forEach { sugestao ->
+                CgOptionRow(
+                    text = sugestao.digits,
+                    supporting = "${sugestao.distinctNumbers} números diferentes: " +
+                        sugestao.samples.joinToString(", ") { PhoneNumberMasker.mask(it) },
+                    selected = false,
+                    onClick = {
+                        onBloquear(
+                            sugestao.digits,
+                            "Faixa ${sugestao.digits}",
+                            NumberPattern.MatchKind.STARTS_WITH,
+                        )
+                    },
+                )
+            }
+
+            CgGap(CgSpace.lg)
+            CgDivider()
+            CgGap(CgSpace.lg)
+        }
+
+        KnownRanges.byGroup().forEach { (grupo, faixas) ->
+            Text(
+                text = grupo.label.uppercase(),
+                style = CgType.overline,
+                color = CgColor.TextTertiary,
+            )
+            CgGap(CgSpace.sm)
+
+            faixas.forEach { faixa ->
+                val jaBloqueada = KnownRanges.isBlocked(faixa, uiState.patterns)
+                CgOptionRow(
+                    text = faixa.label,
+                    supporting = faixa.description,
+                    selected = jaBloqueada,
+                    onClick = {
+                        if (jaBloqueada) {
+                            uiState.patterns
+                                .filter { it.matches(faixa.digits) }
+                                .forEach(onDesbloquear)
+                        } else {
+                            onBloquear(
+                                faixa.digits,
+                                faixa.label,
+                                NumberPattern.MatchKind.STARTS_WITH,
+                            )
+                        }
+                    },
+                )
+                faixa.caveat?.let { aviso ->
+                    CgCallout(
+                        text = aviso,
+                        color = CgColor.Warning,
+                        background = CgColor.WarningDim,
+                    )
+                    CgGap(CgSpace.sm)
+                }
+            }
+            CgGap(CgSpace.lg)
+        }
     }
 }
 

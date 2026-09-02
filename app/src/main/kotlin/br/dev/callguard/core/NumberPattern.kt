@@ -44,16 +44,7 @@ data class NumberPattern(
         val numero = normalizedNumber?.trim().orEmpty()
         if (numero.isEmpty()) return false
 
-        val completos = numero.filter { it.isDigit() }
-        if (completos.isEmpty()) return false
-
-        // A forma nacional só é derivada quando o número REALMENTE declara o Brasil.
-        // Remover "55" de qualquer sequência transformaria 5512345 em 12345 e criaria
-        // casamentos falsos.
-        val nacional = if (numero.startsWith("+55")) completos.removePrefix("55") else null
-
-        val candidatos = listOfNotNull(completos, nacional)
-        return candidatos.any { candidato ->
+        return candidateForms(numero).any { candidato ->
             when (kind) {
                 MatchKind.STARTS_WITH -> candidato.startsWith(digits)
                 MatchKind.CONTAINS -> candidato.contains(digits)
@@ -80,6 +71,28 @@ data class NumberPattern(
     enum class Breadth { VERY_BROAD, BROAD, NARROW }
 
     companion object {
+
+        /**
+         * As formas de um número contra as quais se compara.
+         *
+         * Duas, e isso não é preciosismo: o normalizador produz `+5511999998888` para um
+         * celular comum, mas devolve só os dígitos (`03031234567`) para códigos não
+         * geográficos, que não são E.164 válidos. Um padrão `0303` jamais casaria com a
+         * primeira forma, e um padrão `11` jamais casaria com a segunda.
+         *
+         * O `55` só é removido quando o número **declara** o Brasil com `+55`. Removê-lo
+         * de qualquer sequência transformaria `5512345678` em `12345678` e criaria um
+         * casamento falso com o DDD 12.
+         */
+        fun candidateForms(normalizedNumber: String?): List<String> {
+            val numero = normalizedNumber?.trim().orEmpty()
+            if (numero.isEmpty()) return emptyList()
+            val completos = numero.filter { it.isDigit() }
+            if (completos.isEmpty()) return emptyList()
+            val nacional = if (numero.startsWith("+55")) completos.removePrefix("55") else null
+            return listOfNotNull(completos, nacional).distinct()
+        }
+
         /** Menor padrão aceito. Um dígito só casaria com quase tudo. */
         const val MIN_DIGITS = 2
         const val MAX_DIGITS = 15

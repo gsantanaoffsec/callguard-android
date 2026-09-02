@@ -818,6 +818,39 @@ explicitamente nesse caso.
 pegar um número de emergência por acidente), e a lista de permitidos vence a faixa — é o
 escape que permite bloquear um DDD inteiro e liberar um número específico dentro dele.
 
+### Faixas prontas: sugestões e catálogo
+
+Descobrir os dígitos na mão só funciona para quem já sabe o que procurar. A tela oferece
+duas ajudas, e a **ordem entre elas não é arbitrária**.
+
+**Sugestões do seu registro vêm primeiro**, porque são as que resolvem. Uma operadora
+fazendo campanha não liga do número da central: liga de um DDD comum, e a faixa muda por
+região e por campanha. Ninguém consegue enumerar isso no código — mas o aparelho já tem a
+resposta, no registro de quem ligou. `PatternSuggester` agrupa os números recebidos por
+prefixo de 4 a 7 dígitos e propõe os que aparecem em dois números distintos ou mais.
+
+Quatro regras que o algoritmo respeita, todas com teste:
+
+- **Nunca sugere um prefixo que pegaria um número da lista de permitidos.** Seria o app
+  discordando de uma decisão explícita do usuário — e discordando com aparência de
+  recomendação, que é pior.
+- **Nunca sugere menos de 4 dígitos.** Um prefixo de 2 é um DDD inteiro e de 3 é meia
+  região; oferecer isso é um tiro no pé com cara de conselho.
+- **Entre prefixos que pegam o mesmo conjunto, escolhe o mais longo.** É igualmente eficaz
+  e menos abrangente.
+- **Usa a forma nacional, não a internacional.** O algoritmo original propunha `5511400`
+  em vez de `114004`: equivalente para a máquina, ilegível para quem pensa em DDD — e uma
+  sugestão que a pessoa não entende ela não confere, ela só aceita.
+
+**O catálogo conhecido** (`KnownRanges`) cobre telemarketing (`0303`), faixas de serviço
+(`0800`, `0300`, `0500`, `4004`, `4003`, `3003`) e as centrais das operadoras (Claro
+`1052`, TIM `1056`, Vivo `1058` e `10315`). Cada uma diz o que é, e as que merecem
+ressalva a exibem antes de bloquear:
+
+- **Operadoras:** esse é o número que **você liga**, não necessariamente de onde **elas
+  ligam**. Bloquear evita o retorno por esse canal, mas não barra a campanha de vendas.
+- **0800:** bancos, planos de saúde e serviços legítimos também usam. Bloquear pega os dois.
+
 Sobre o prefixo **0303**: era obrigatório para telemarketing desde 2022, mas a ANATEL
 [revogou a obrigatoriedade em agosto de 2025](https://agenciabrasil.ebc.com.br/geral/noticia/2025-08/anatel-revoga-obrigatoriedade-do-uso-do-prefixo-0303-em-ligacoes).
 Ainda é usado por parte do setor, mas não dá mais para tratá-lo como regra — motivo a mais
@@ -1292,7 +1325,7 @@ Compilado e testado nesta máquina antes da entrega:
 ```
 > Task :app:compileDebugKotlin        (sem erros)
 > Task :app:kspDebugKotlin            (Room gerou os DAOs, schema v3 exportado)
-> Task :app:testDebugUnitTest         149 testes, 0 falhas
+> Task :app:testDebugUnitTest         159 testes, 0 falhas
 > Task :app:lintVitalRelease          (sem erros fatais)
 > Task :app:assembleRelease           (R8 + shrinkResources)
 BUILD SUCCESSFUL
@@ -1308,15 +1341,16 @@ BUILD SUCCESSFUL
 | `CallAttemptDaoTest` | 6 | 0 |
 | `PermissionCatalogTest` | 11 | 0 |
 | `NumberPatternTest` | 12 | 0 |
+| `PatternSuggesterTest` | 10 | 0 |
 | `WindowFormatTest` | 8 | 0 |
 | `HomeScreenInteractionTest` | 9 | 0 |
 | `CallerIdCodesTest` | 6 | 0 |
 | `BrazilPhoneRulesTest` | 5 | 0 |
 | `PhoneNumberMaskerTest` | 3 | 0 |
 | `ProtectionSettingsTest` | 5 | 0 |
-| **Total** | **149** | **0** |
+| **Total** | **159** | **0** |
 
-APK release: **3,7 MB** com R8 (`CallGuard-2.6.0.apk`, versionCode 14). O APK debug fica
+APK release: **3,7 MB** com R8 (`CallGuard-2.7.0.apk`, versionCode 15). O APK debug fica
 em ~31 MB por carregar ferramental de desenvolvimento — serve para depurar, não para
 distribuir.
 

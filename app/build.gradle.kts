@@ -14,8 +14,8 @@ android {
         // CallScreeningService + RoleManager.ROLE_CALL_SCREENING existem a partir da API 29.
         minSdk = 29
         targetSdk = 36
-        versionCode = 14
-        versionName = "2.6.0"
+        versionCode = 15
+        versionName = "2.7.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
